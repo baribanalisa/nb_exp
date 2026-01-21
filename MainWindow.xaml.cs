@@ -2365,5 +2365,70 @@ public partial class MainWindow : Window
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
     [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
 
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        try
+        {
+            // Cancel any ongoing experiment operations
+            AbortExperimentFromUi();
+            _runCts?.Cancel();
+            _nextTcs?.TrySetCanceled();
+        }
+        catch { }
+
+        base.OnClosing(e);
+    }
+
+    protected override async void OnClosed(EventArgs e)
+    {
+        try
+        {
+            // Wait for any active run task to complete
+            if (_activeRunTask != null)
+            {
+                try
+                {
+                    await Task.WhenAny(_activeRunTask, Task.Delay(2000));
+                }
+                catch { }
+            }
+        }
+        catch { }
+
+        try
+        {
+            // Clean up VLC resources
+            _vlcPlayer?.Stop();
+            _vlcPlayer?.Dispose();
+            _vlcPlayer = null;
+            
+            _vlc?.Dispose();
+            _vlc = null;
+        }
+        catch { }
+
+        try
+        {
+            // Close all other windows to ensure proper shutdown
+            for (int i = System.Windows.Application.Current.Windows.Count - 1; i >= 0; i--)
+            {
+                var window = System.Windows.Application.Current.Windows[i];
+                if (window != this)
+                {
+                    try
+                    {
+                        window.Close();
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+
+        base.OnClosed(e);
+        
+        // Force application shutdown to ensure process terminates
+        System.Windows.Application.Current.Shutdown();
+    }
 
 }
