@@ -12,6 +12,8 @@ using System.Buffers.Binary;
 
 namespace NeuroBureau.Experiment;
 
+public readonly record struct ShimmerDataPoint(double Time, double HeartRate, double SkinResistance, double SkinConductance, double Range, double Ppg);
+
 public sealed class ShimmerGsrClient : IAsyncDisposable
 {
     private readonly string _btName;
@@ -31,6 +33,8 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
     private bool _streamingStarted;
     private bool _processStarted;
     private int _stopping; // защита от двойного StopAsync
+    
+    public event Action<ShimmerDataPoint>? DataReceived;
     
     // legacy ABI размер записи GSRData на Win x64 (double*6 + byte + reserved[32] + padding до 8)
 
@@ -84,7 +88,6 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         lock (_streamLock)
         {
             var s = _stream;
-            if (s == null) return;
 
             void Log(string decision)
             {
@@ -105,7 +108,10 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             // 1) Уже legacy-формат (88*N)
             if (buf.Length % LegacyGsrRecordSize == 0)
             {
-                s.Write(buf, 0, buf.Length);
+                if (s != null)
+                {
+                    s.Write(buf, 0, buf.Length);
+                }
                 Log("write_legacy");
                 return;
             }
@@ -124,7 +130,13 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
                     // rec[48] = 0; // battery (необязательно)
                     // остальное нули = reserved + паддинг
 
-                    s.Write(rec, 0, rec.Length);
+                    if (s != null)
+                    {
+                        s.Write(rec, 0, rec.Length);
+                    }
+                    
+                    // Извлекаем данные для события (из первых 48 байт)
+                    RaiseDataReceivedEvent(buf, i * WireGsrRecordSize, WireGsrRecordSize);
                 }
 
                 Log($"pad48_to_88_x{n}");
@@ -133,6 +145,33 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
 
             // 3) Всё остальное — опасно, лучше дропнуть
             Log("drop_unexpected_len");
+        }
+    }
+
+    private void RaiseDataReceivedEvent(byte[] buf, int offset, int length)
+    {
+        try
+        {
+            if (DataReceived == null || length != WireGsrRecordSize) return;
+
+            ReadOnlySpan<byte> b = new ReadOnlySpan<byte>(buf, offset, length);
+
+            double time = ReadF64LE(b, 0);
+            double hr = ReadF64LE(b, 8);
+            double sr = ReadF64LE(b, 16);
+            double sc = ReadF64LE(b, 24);
+            double range = ReadF64LE(b, 32);
+            double ppg = ReadF64LE(b, 40);
+
+            if (!IsFinite(time) || !IsFinite(hr) || !IsFinite(sr) || !IsFinite(sc) || !IsFinite(range) || !IsFinite(ppg))
+                return;
+
+            var dataPoint = new ShimmerDataPoint(time, hr, sr, sc, range, ppg);
+            DataReceived?.Invoke(dataPoint);
+        }
+        catch
+        {
+            // Игнорируем ошибки в обработчиках событий
         }
     }
 
