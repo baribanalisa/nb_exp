@@ -366,10 +366,10 @@ public partial class DeviceCheckWindow : Window
             HrChart.Clear("Ожидание данных...");
             PpgChart.Clear("Ожидание данных...");
             
-            // Инициализируем превью взгляда
-            GazeStatus.Text = "Ожидание данных трекера...";
-            GazeCoords.Text = "X: -, Y: -";
-            GazePoint.Visibility = Visibility.Collapsed;
+            // Инициализируем превью взгляда - УДАЛЕНО
+            //GazeStatus.Text = "Ожидание данных трекера...";
+            //GazeCoords.Text = "X: -, Y: -";
+            //GazePoint.Visibility = Visibility.Collapsed;
         });
     }
 
@@ -478,11 +478,11 @@ public partial class DeviceCheckWindow : Window
         
         var linkedCt = CancellationTokenSource.CreateLinkedTokenSource(ct, _gazeMonitorCancellationTokenSource.Token).Token;
         
-        // Обновляем UI статус
-        Dispatcher.BeginInvoke(() =>
-        {
-            GazeStatus.Text = "Подключение к трекеру...";
-        });
+        // Обновляем UI статус - УДАЛЕНО
+        //Dispatcher.BeginInvoke(() =>
+        //{
+        //    GazeStatus.Text = "Подключение к трекеру...";
+        //});
         
         try
         {
@@ -507,11 +507,11 @@ public partial class DeviceCheckWindow : Window
         }
         catch (Exception ex)
         {
-            // Обновляем UI при ошибке
-            Dispatcher.BeginInvoke(() =>
-            {
-                GazeStatus.Text = $"Ошибка: {ShortErr(ex)}";
-            });
+            // Обновляем UI при ошибке - УДАЛЕНО
+            //Dispatcher.BeginInvoke(() =>
+            //{
+            //    GazeStatus.Text = $"Ошибка: {ShortErr(ex)}";
+            //});
             System.Diagnostics.Debug.WriteLine($"Ошибка мониторинга взгляда: {ex.Message}");
         }
     }
@@ -534,21 +534,21 @@ public partial class DeviceCheckWindow : Window
                     _lastGazeY = Math.Max(0, Math.Min(1, yn));
                     _lastGazeUpdate = DateTime.Now;
                     
-                    // Обновляем UI
-                    Dispatcher.BeginInvoke(() =>
-                    {
-                        // Позиционируем красную точку в превью
-                        var pointX = _lastGazeX * 160 - 4; // Центрируем точку 8px
-                        var pointY = _lastGazeY * 120 - 4;
-                        
-                        System.Windows.Controls.Canvas.SetLeft(GazePoint, pointX);
-                        System.Windows.Controls.Canvas.SetTop(GazePoint, pointY);
-                        GazePoint.Visibility = Visibility.Visible;
-                        
-                        // Обновляем информацию
-                        GazeStatus.Text = "Трекер активен";
-                        GazeCoords.Text = $"X: {_lastGazeX:F3}, Y: {_lastGazeY:F3}";
-                    });
+                    // Обновляем UI - УДАЛЕНО
+                    //Dispatcher.BeginInvoke(() =>
+                    //{
+                    //    // Позиционируем красную точку в превью
+                    //    var pointX = _lastGazeX * 160 - 4; // Центрируем точку 8px
+                    //    var pointY = _lastGazeY * 120 - 4;
+                    //    
+                    //    System.Windows.Controls.Canvas.SetLeft(GazePoint, pointX);
+                    //    System.Windows.Controls.Canvas.SetTop(GazePoint, pointY);
+                    //    GazePoint.Visibility = Visibility.Visible;
+                    //    
+                    //    // Обновляем информацию
+                    //    GazeStatus.Text = "Трекер активен";
+                    //    GazeCoords.Text = $"X: {_lastGazeX:F3}, Y: {_lastGazeY:F3}";
+                    //});
                     
                     System.Diagnostics.Debug.WriteLine($"Взгляд: X={_lastGazeX:F3}, Y={_lastGazeY:F3}");
                 }
