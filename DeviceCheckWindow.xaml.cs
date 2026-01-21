@@ -443,7 +443,7 @@ public partial class DeviceCheckWindow : Window
             var srMin = srFiltered.Min(p => p.Value);
             var srMax = srFiltered.Max(p => p.Value);
             var srRange = Math.Max(1.0, srMax - srMin);
-            SrChart.SetData(srFiltered, tMin, tMax, srMin - srRange * 0.1, srMax + srRange * 0.1, double.NaN, "КГР: Сопротивление (SR)");
+            SrChart.SetData(srFiltered, tMin, tMax, srMin - srRange * 0.1, srMax + srRange * 0.1, double.NaN, "КГР: Сопротивление (SR)", null, "кОм");
         }
 
         if (scFiltered.Count > 0)
@@ -451,14 +451,14 @@ public partial class DeviceCheckWindow : Window
             var scMin = scFiltered.Min(p => p.Value);
             var scMax = scFiltered.Max(p => p.Value);
             var scRange = Math.Max(1.0, scMax - scMin);
-            ScChart.SetData(scFiltered, tMin, tMax, scMin - scRange * 0.1, scMax + scRange * 0.1, double.NaN, "КГР: Проводимость (SC)");
+            ScChart.SetData(scFiltered, tMin, tMax, scMin - scRange * 0.1, scMax + scRange * 0.1, double.NaN, "КГР: Проводимость (SC)", null, "мкСм");
         }
 
         if (hrFiltered.Count > 0)
         {
             var hrMin = Math.Max(0, hrFiltered.Min(p => p.Value));
             var hrMax = Math.Min(200, hrFiltered.Max(p => p.Value));
-            HrChart.SetData(hrFiltered, tMin, tMax, hrMin - 10, hrMax + 10, double.NaN, "Пульс (HR)");
+            HrChart.SetData(hrFiltered, tMin, tMax, hrMin - 10, hrMax + 10, double.NaN, "Пульс (HR)", null, "уд/мин");
         }
 
         if (ppgFiltered.Count > 0)
@@ -466,7 +466,7 @@ public partial class DeviceCheckWindow : Window
             var ppgMin = ppgFiltered.Min(p => p.Value);
             var ppgMax = ppgFiltered.Max(p => p.Value);
             var ppgRange = Math.Max(1.0, ppgMax - ppgMin);
-            PpgChart.SetData(ppgFiltered, tMin, tMax, ppgMin - ppgRange * 0.1, ppgMax + ppgRange * 0.1, double.NaN, "Фотоплетизмограмма (PPG)");
+            PpgChart.SetData(ppgFiltered, tMin, tMax, ppgMin - ppgRange * 0.1, ppgMax + ppgRange * 0.1, double.NaN, "Фотоплетизмограмма (PPG)", null, "усл.ед.");
         }
     }
     
