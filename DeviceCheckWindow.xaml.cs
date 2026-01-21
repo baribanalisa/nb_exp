@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
@@ -9,6 +10,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
+using NeuroBureau.Experiment.Controls;
 using MessageBox = System.Windows.MessageBox;
 namespace NeuroBureau.Experiment;
 
@@ -26,6 +29,15 @@ public partial class DeviceCheckWindow : Window
     public ShimmerGsrClient? ShimmerClient { get; private set; }
     public DeviceFile? ShimmerDevice { get; private set; }
     public bool SkipShimmer { get; private set; }
+    
+    private readonly object _chartDataLock = new();
+    private readonly List<MetricPoint> _srData = new();
+    private readonly List<MetricPoint> _scData = new();
+    private readonly List<MetricPoint> _hrData = new();
+    private readonly List<MetricPoint> _ppgData = new();
+    private double _chartStartTime;
+    private const int MaxChartPoints = 500;
+    private const double ChartWindowSeconds = 10.0;
 
     public DeviceCheckWindow(string expDir, ExperimentFile exp, CancellationToken externalCt)
     {
@@ -43,9 +55,14 @@ public partial class DeviceCheckWindow : Window
     private void DeviceCheckWindow_Closing(object? sender, CancelEventArgs e)
     {
         // если окно закрыли НЕ через "Запустить" — прибиваем то, что успели поднять
-        if (_keepClients) return;
+        if (_keepClients)
+        {
+            StopShimmerCharts();
+            return;
+        }
 
         _cts?.Cancel();
+        StopShimmerCharts();
 
         if (ShimmerClient != null)
         {
@@ -66,6 +83,7 @@ public partial class DeviceCheckWindow : Window
     private async void Retry_Click(object sender, RoutedEventArgs e)
     {
         _cts?.Cancel();
+        StopShimmerCharts();
         await RunChecksAsync();
     }
 
@@ -129,6 +147,8 @@ public partial class DeviceCheckWindow : Window
 
         StartBtn.IsEnabled = false;
         Vm.Devices.Clear();
+        
+        ShimmerChartsPanel.Visibility = Visibility.Collapsed;
 
         // 1) заполним список устройств как в exp.json
         foreach (var d in _exp.Devices)
@@ -198,6 +218,8 @@ public partial class DeviceCheckWindow : Window
 
                 row.Status = "ОК";
                 row.Details = $"Подключено: BT \"{resolved.btName}\", port {resolved.port}.";
+                
+                StartShimmerCharts();
             }
             catch (Exception ex)
             {
@@ -305,6 +327,128 @@ public partial class DeviceCheckWindow : Window
         var msg = ex.Message;
         if (string.IsNullOrWhiteSpace(msg)) msg = ex.GetType().Name;
         return msg;
+    }
+
+    private void StartShimmerCharts()
+    {
+        if (ShimmerClient == null) return;
+
+        lock (_chartDataLock)
+        {
+            _srData.Clear();
+            _scData.Clear();
+            _hrData.Clear();
+            _ppgData.Clear();
+            _chartStartTime = 0;
+        }
+
+        ShimmerClient.DataReceived += OnShimmerDataReceived;
+
+        Dispatcher.Invoke(() =>
+        {
+            ShimmerChartsPanel.Visibility = Visibility.Visible;
+            SrChart.Clear("Ожидание данных...");
+            ScChart.Clear("Ожидание данных...");
+            HrChart.Clear("Ожидание данных...");
+            PpgChart.Clear("Ожидание данных...");
+        });
+    }
+
+    private void StopShimmerCharts()
+    {
+        if (ShimmerClient != null)
+        {
+            ShimmerClient.DataReceived -= OnShimmerDataReceived;
+        }
+        
+        Dispatcher.Invoke(() =>
+        {
+            ShimmerChartsPanel.Visibility = Visibility.Collapsed;
+        });
+    }
+
+    private void OnShimmerDataReceived(ShimmerDataPoint data)
+    {
+        lock (_chartDataLock)
+        {
+            if (_chartStartTime == 0)
+            {
+                _chartStartTime = data.Time;
+            }
+
+            var relativeTime = data.Time - _chartStartTime;
+
+            _srData.Add(new MetricPoint(relativeTime, data.SkinResistance));
+            _scData.Add(new MetricPoint(relativeTime, data.SkinConductance));
+            _hrData.Add(new MetricPoint(relativeTime, data.HeartRate));
+            _ppgData.Add(new MetricPoint(relativeTime, data.Ppg));
+
+            if (_srData.Count > MaxChartPoints)
+            {
+                _srData.RemoveAt(0);
+                _scData.RemoveAt(0);
+                _hrData.RemoveAt(0);
+                _ppgData.RemoveAt(0);
+            }
+        }
+
+        Dispatcher.InvokeAsync(() => UpdateCharts(), System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private void UpdateCharts()
+    {
+        List<MetricPoint> srCopy, scCopy, hrCopy, ppgCopy;
+        double tMin, tMax;
+
+        lock (_chartDataLock)
+        {
+            if (_srData.Count == 0) return;
+
+            srCopy = new List<MetricPoint>(_srData);
+            scCopy = new List<MetricPoint>(_scData);
+            hrCopy = new List<MetricPoint>(_hrData);
+            ppgCopy = new List<MetricPoint>(_ppgData);
+
+            var latestTime = _srData[_srData.Count - 1].TimeSec;
+            tMin = Math.Max(0, latestTime - ChartWindowSeconds);
+            tMax = latestTime;
+        }
+
+        var srFiltered = srCopy.Where(p => p.TimeSec >= tMin).ToList();
+        var scFiltered = scCopy.Where(p => p.TimeSec >= tMin).ToList();
+        var hrFiltered = hrCopy.Where(p => p.TimeSec >= tMin).ToList();
+        var ppgFiltered = ppgCopy.Where(p => p.TimeSec >= tMin).ToList();
+
+        if (srFiltered.Count > 0)
+        {
+            var srMin = srFiltered.Min(p => p.Value);
+            var srMax = srFiltered.Max(p => p.Value);
+            var srRange = Math.Max(1.0, srMax - srMin);
+            SrChart.SetData(srFiltered, tMin, tMax, srMin - srRange * 0.1, srMax + srRange * 0.1, double.NaN, "КГР: Сопротивление (SR)");
+        }
+
+        if (scFiltered.Count > 0)
+        {
+            var scMin = scFiltered.Min(p => p.Value);
+            var scMax = scFiltered.Max(p => p.Value);
+            var scRange = Math.Max(1.0, scMax - scMin);
+            ScChart.SetData(scFiltered, tMin, tMax, scMin - scRange * 0.1, scMax + scRange * 0.1, double.NaN, "КГР: Проводимость (SC)");
+        }
+
+        if (hrFiltered.Count > 0)
+        {
+            var hrMin = Math.Max(0, hrFiltered.Min(p => p.Value));
+            var hrMax = Math.Min(200, hrFiltered.Max(p => p.Value));
+            HrChart.SetData(hrFiltered, tMin, tMax, hrMin - 10, hrMax + 10, double.NaN, "Пульс (HR)");
+        }
+
+        if (ppgFiltered.Count > 0)
+        {
+            var ppgMin = ppgFiltered.Min(p => p.Value);
+            var ppgMax = ppgFiltered.Max(p => p.Value);
+            var ppgRange = Math.Max(1.0, ppgMax - ppgMin);
+            PpgChart.SetData(ppgFiltered, tMin, tMax, ppgMin - ppgRange * 0.1, ppgMax + ppgRange * 0.1, double.NaN, "Фотоплетизмограмма (PPG)");
+        }
     }
 }
 
