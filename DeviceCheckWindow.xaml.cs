@@ -190,7 +190,7 @@ public partial class DeviceCheckWindow : Window
                 
                 // Запускаем мониторинг взгляда если трекер доступен
                 _trackerClient = tracker;
-                StartGazeMonitoring(ct);
+                _ = StartGazeMonitoring(ct); // Игнорируем предупреждение, так как это фоновая задача
             }
             catch (Exception ex)
             {
@@ -470,7 +470,7 @@ public partial class DeviceCheckWindow : Window
         }
     }
     
-    private async void StartGazeMonitoring(CancellationToken ct)
+    private async Task StartGazeMonitoring(CancellationToken ct)
     {
         _gazeMonitorCancellationTokenSource?.Cancel();
         _gazeMonitorCancellationTokenSource?.Dispose();
@@ -507,6 +507,11 @@ public partial class DeviceCheckWindow : Window
         }
         catch (Exception ex)
         {
+            // Обновляем UI при ошибке
+            Dispatcher.BeginInvoke(() =>
+            {
+                GazeStatus.Text = $"Ошибка: {ShortErr(ex)}";
+            });
             System.Diagnostics.Debug.WriteLine($"Ошибка мониторинга взгляда: {ex.Message}");
         }
     }
