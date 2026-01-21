@@ -30,6 +30,7 @@ public sealed class MetricChart : FrameworkElement
     private double _yMin, _yMax;
     private double _threshold;
     private string _title = "";
+    private string _yUnit = "";
     private string _emptyText = "—";
 
     // Свойства для скроллинга и зума
@@ -38,10 +39,12 @@ public sealed class MetricChart : FrameworkElement
     private double _zoomFactor = 1.0;
     private bool _isDragging = false;
     private double _dragStartX = 0;
-    
+
+    private string _xUnit = "с";
+
     private const double Pad = 10;
     private const double MinZoom = 0.1;
-    private const double MaxZoom = 10.0;
+    private const double MaxZoom = 1.0;
 
     private static readonly Brush Bg = new SolidColorBrush(Color.FromRgb(0xFA, 0xFA, 0xFA));
     private static readonly Brush Border = new SolidColorBrush(Color.FromArgb(0x22, 0, 0, 0));
@@ -76,7 +79,9 @@ public sealed class MetricChart : FrameworkElement
         double yMin, double yMax,
         double threshold,
         string title,
-        IReadOnlyList<(double StartSec, double EndSec)>? fixBands = null)
+        IReadOnlyList<(double StartSec, double EndSec)>? fixBands = null,
+        string? yUnit = null,
+        string? xUnit = null)
     {
         _series = series;
         _fixBands = fixBands;
@@ -92,14 +97,15 @@ public sealed class MetricChart : FrameworkElement
 
         _threshold = threshold;
         _title = title ?? "";
+        _yUnit = yUnit ?? "";
+        _xUnit = xUnit ?? "с";
 
         _emptyText = "—";
-        
-        // Инициализация видимого диапазона
+
         _zoomFactor = 1.0;
         _visibleTMin = _totalTMin;
         _visibleTMax = _totalTMax;
-        
+
         InvalidateVisual();
     }
 
@@ -109,10 +115,12 @@ public sealed class MetricChart : FrameworkElement
         double yMin, double yMax,
         double threshold,
         string title,
-        IReadOnlyList<(double StartSec, double EndSec)>? fixBands = null)
+        IReadOnlyList<(double StartSec, double EndSec)>? fixBands = null,
+        string? yUnit = null,
+        string? xUnit = null)
     {
         SetData(new List<MetricSeries> { new(points, ((SolidColorBrush)Line).Color) },
-            tMin, tMax, yMin, yMax, threshold, title, fixBands);
+            tMin, tMax, yMin, yMax, threshold, title, fixBands, yUnit, xUnit);
     }
 
     // Добавляем обработчики событий
@@ -166,68 +174,80 @@ public sealed class MetricChart : FrameworkElement
         }
     }
 
-    private void ZoomAt(Point mousePos, double zoomFactor)
+    private void ZoomAt(Point mousePos, double zoomDelta)
     {
-        var newZoomFactor = Math.Max(MinZoom, Math.Min(MaxZoom, _zoomFactor * zoomFactor));
-        
-        if (Math.Abs(newZoomFactor - _zoomFactor) < 0.01) return;
-        
+        if (_totalTMax <= _totalTMin) return;
+
         var plot = GetPlotRect();
-        var relativeX = (mousePos.X - plot.Left) / plot.Width;
-        
+        if (plot.Width <= 0) return;
+
         var totalRange = _totalTMax - _totalTMin;
-        var oldVisibleRange = totalRange * _zoomFactor;
-        var newVisibleRange = totalRange * newZoomFactor;
-        
-        var centerTime = _visibleTMin + relativeX * oldVisibleRange;
-        var newVisibleTMin = centerTime - relativeX * newVisibleRange;
+        var oldVisibleRange = _visibleTMax - _visibleTMin;
+        if (oldVisibleRange <= 0) oldVisibleRange = totalRange;
+
+        var newVisibleRange = oldVisibleRange * zoomDelta;
+        var minVisibleRange = totalRange * MinZoom;
+        var maxVisibleRange = totalRange * MaxZoom;
+        newVisibleRange = Math.Max(minVisibleRange, Math.Min(maxVisibleRange, newVisibleRange));
+
+        if (Math.Abs(newVisibleRange - oldVisibleRange) < 1e-6) return;
+
+        var relativeX = (mousePos.X - plot.Left) / plot.Width;
+        relativeX = Math.Max(0, Math.Min(1, relativeX));
+
+        var anchorTime = _visibleTMin + relativeX * oldVisibleRange;
+        var newVisibleTMin = anchorTime - relativeX * newVisibleRange;
         var newVisibleTMax = newVisibleTMin + newVisibleRange;
-        
-        // Ограничиваем границы
+
         if (newVisibleTMin < _totalTMin)
         {
             newVisibleTMin = _totalTMin;
             newVisibleTMax = newVisibleTMin + newVisibleRange;
         }
+
         if (newVisibleTMax > _totalTMax)
         {
             newVisibleTMax = _totalTMax;
             newVisibleTMin = newVisibleTMax - newVisibleRange;
         }
-        
-        _zoomFactor = newZoomFactor;
+
         _visibleTMin = newVisibleTMin;
         _visibleTMax = newVisibleTMax;
-        
+        _zoomFactor = totalRange > 0 ? (_visibleTMax - _visibleTMin) / totalRange : 1.0;
+
         InvalidateVisual();
     }
 
     private void ScrollByDelta(double deltaX)
     {
         if (_totalTMax <= _totalTMin) return;
-        
-        var totalRange = _totalTMax - _totalTMin;
+
+        var plot = GetPlotRect();
+        if (plot.Width <= 0) return;
+
         var visibleRange = _visibleTMax - _visibleTMin;
-        var scrollAmount = -deltaX / ActualWidth * totalRange;
-        
+        if (visibleRange <= 0) return;
+
+        var scrollAmount = -deltaX / plot.Width * visibleRange;
+
         var newTMin = _visibleTMin + scrollAmount;
         var newTMax = _visibleTMax + scrollAmount;
-        
-        // Ограничиваем границы
+
         if (newTMin < _totalTMin)
         {
             newTMin = _totalTMin;
             newTMax = newTMin + visibleRange;
         }
+
         if (newTMax > _totalTMax)
         {
             newTMax = _totalTMax;
             newTMin = newTMax - visibleRange;
         }
-        
+
         _visibleTMin = newTMin;
         _visibleTMax = newTMax;
-        
+
         InvalidateVisual();
     }
 
@@ -335,37 +355,65 @@ public sealed class MetricChart : FrameworkElement
             dc.DrawGeometry(null, new Pen(brush, 1.5), geo);
         }
 
-        // y labels (min/max)
-        DrawText(dc, $"{_yMax:0}", 11, new Point(plot.Right - 42, plot.Top - 2));
-        DrawText(dc, $"{_yMin:0}", 11, new Point(plot.Right - 42, plot.Bottom - 14));
+        // y labels (min/max) с единицами измерения
+        var yUnitSuffix = string.IsNullOrWhiteSpace(_yUnit) ? "" : $" {_yUnit}";
+        DrawTextRight(dc, $"{_yMax:0}{yUnitSuffix}", 11, new Point(plot.Right, plot.Top - 2));
+        DrawTextRight(dc, $"{_yMin:0}{yUnitSuffix}", 11, new Point(plot.Right, plot.Bottom - 14));
 
-        // x labels (min/max)
-        DrawText(dc, $"{_visibleTMin:0.0}s", 10, new Point(plot.Left, plot.Bottom + 2));
-        DrawText(dc, $"{_visibleTMax:0.0}s", 10, new Point(plot.Right - 50, plot.Bottom + 2));
+        // x labels (min/max) с единицами измерения
+        var xUnitSuffix = string.IsNullOrWhiteSpace(_xUnit) ? "" : $" {_xUnit}";
+        DrawText(dc, $"{_visibleTMin:0.0}{xUnitSuffix}", 10, new Point(plot.Left, plot.Bottom + 2));
+        DrawTextRight(dc, $"{_visibleTMax:0.0}{xUnitSuffix}", 10, new Point(plot.Right, plot.Bottom + 2));
     }
 
     private double X(double t, Rect plot)
-        => plot.Left + (t - _tMin) / (_tMax - _tMin) * plot.Width;
+    {
+        var d = _tMax - _tMin;
+        if (d <= 1e-9) d = 1e-9;
+        return plot.Left + (t - _tMin) / d * plot.Width;
+    }
 
     private double XVisible(double t, Rect plot)
-        => plot.Left + (t - _visibleTMin) / (_visibleTMax - _visibleTMin) * plot.Width;
+    {
+        var d = _visibleTMax - _visibleTMin;
+        if (d <= 1e-9) d = 1e-9;
+        return plot.Left + (t - _visibleTMin) / d * plot.Width;
+    }
 
     private double Y(double v, Rect plot)
-        => plot.Bottom - (v - _yMin) / (_yMax - _yMin) * plot.Height;
-
-    private static void DrawText(DrawingContext dc, string s, double size, Point at)
     {
-        if (string.IsNullOrEmpty(s)) return;
+        var d = _yMax - _yMin;
+        if (d <= 1e-9) d = 1e-9;
+        return plot.Bottom - (v - _yMin) / d * plot.Height;
+    }
 
-        var ft = new FormattedText(
+    private static FormattedText CreateText(string s, double size)
+    {
+        var dpi = Application.Current?.MainWindow != null
+            ? VisualTreeHelper.GetDpi(Application.Current.MainWindow).PixelsPerDip
+            : 1.0;
+
+        return new FormattedText(
             s,
             CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight,
             new Typeface("Segoe UI"),
             size,
             Text,
-            VisualTreeHelper.GetDpi(Application.Current.MainWindow).PixelsPerDip);
+            dpi);
+    }
 
-        dc.DrawText(ft, at);
+    private static void DrawText(DrawingContext dc, string s, double size, Point at)
+    {
+        if (string.IsNullOrEmpty(s)) return;
+        dc.DrawText(CreateText(s, size), at);
+    }
+
+    private static void DrawTextRight(DrawingContext dc, string s, double size, Point rightTop)
+    {
+        if (string.IsNullOrEmpty(s)) return;
+
+        var ft = CreateText(s, size);
+        dc.DrawText(ft, new Point(rightTop.X - ft.Width, rightTop.Y));
     }
 }
