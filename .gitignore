@@ -1,0 +1,46 @@
+# ---- .NET / Visual Studio ----
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.claude/
+# Rider
+.idea/
+
+# OS junk
+Thumbs.db
+.DS_Store
+
+# Logs / temp
+*.log
+*.tmp
+nul*
+tmp*
+# NuGet / artifacts
+packages/
+*.nupkg
+
+# Test results / coverage
+TestResults/
+*.coverage
+*.coveragexml
+tmpclaude*/
+
+# Publish / installers
+publish/
+dist/
+artifacts/
+ffmpeg.exe
+Shimmer/
+
+# ---- If you keep local experiments/results in repo folder ----
+**/Experiments/
+**/results/
+*.mkv
+*.mp4
+*.avi
+*.tar.gz
+*.zip

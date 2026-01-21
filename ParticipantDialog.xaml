@@ -1,0 +1,44 @@
+<Window x:Class="NeuroBureau.Experiment.ParticipantDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Данные участника" SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="110"/>
+            <ColumnDefinition Width="260"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Имя*"/>
+        <TextBox Grid.Row="0" Grid.Column="1" Margin="6,4,0,4" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Возраст"/>
+        <TextBox Grid.Row="1" Grid.Column="1" Margin="6,4,0,4" Text="{Binding Age, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Пол"/>
+        <ComboBox Grid.Row="2" Grid.Column="1" Margin="6,4,0,4" SelectedValue="{Binding Sex}">
+            <ComboBoxItem Content=""/>
+            <ComboBoxItem Content="f"/>
+            <ComboBoxItem Content="m"/>
+            <ComboBoxItem Content="other"/>
+        </ComboBox>
+
+        <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Top" Text="Комментарий"/>
+        <TextBox Grid.Row="3" Grid.Column="1" Margin="6,4,0,4" Height="60" AcceptsReturn="True"
+                 TextWrapping="Wrap" Text="{Binding Comment, UpdateSourceTrigger=PropertyChanged}"/>
+
+        <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Width="90" Margin="0,0,8,0" IsCancel="True" Content="Отмена"/>
+            <Button Width="90" IsDefault="True" Content="ОК" Click="Ok_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
+

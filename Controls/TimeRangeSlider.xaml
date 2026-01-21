@@ -1,0 +1,44 @@
+<UserControl x:Class="NeuroBureau.Experiment.Controls.TimeRangeSlider"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="root"
+             Height="28">
+    <UserControl.Resources>
+        <Style TargetType="Thumb">
+            <Setter Property="Width" Value="14"/>
+            <Setter Property="Height" Value="14"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border CornerRadius="7"
+                                Background="White"
+                                BorderBrush="#99000000"
+                                BorderThickness="1"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Canvas x:Name="PART_Canvas" Height="28" Background="Transparent">
+            <!-- трек -->
+            <Border x:Name="Track"
+                    Height="4"
+                    CornerRadius="2"
+                    Background="#1F000000"
+                    Canvas.Top="12"/>
+
+            <!-- выделенный диапазон -->
+            <Border x:Name="Selection"
+                    Height="4"
+                    CornerRadius="2"
+                    Background="#FF6FA8DC"
+                    Canvas.Top="12"/>
+
+            <!-- ручки -->
+            <Thumb x:Name="StartThumb" Canvas.Top="7"/>
+            <Thumb x:Name="EndThumb" Canvas.Top="7"/>
+        </Canvas>
+    </Grid>
+</UserControl>

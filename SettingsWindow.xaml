@@ -1,0 +1,199 @@
+<Window x:Class="NeuroBureau.Experiment.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Настройки"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <Window.Resources>
+        <Style x:Key="PillButton" TargetType="Button">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="Background" Value="#FFF2F3F5"/>
+            <Setter Property="BorderBrush" Value="#FFE1E4E8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#FFE9ECF1"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#FFDDE2EA"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="RowLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="10,4"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18" MinWidth="640">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+
+        <!-- Таблица: общие -->
+        <GroupBox Header="Общие" Padding="12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Путь до папки с экспериментами" Style="{StaticResource RowLabel}"/>
+                <!-- Вместо простого TextBox теперь Grid с TextBox и Кнопкой -->
+                <Grid Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Поле ввода -->
+                    <TextBox x:Name="ExperimentsPathBox" 
+                             Grid.Column="0" 
+                             Margin="0,0,8,0"
+                             VerticalAlignment="Center"/>
+
+                    <!-- Кнопка обзора -->
+                    <Button Grid.Column="1" 
+                            Content="..." 
+                            Style="{StaticResource PillButton}" 
+                            Width="40" 
+                            Height="32"
+                            Padding="0"
+                            Click="BrowseExperiments_Click" 
+                            ToolTip="Выбрать папку"/>
+                </Grid>
+            </Grid>
+        </GroupBox>
+        <!-- Таблица: горячие клавиши -->
+        <GroupBox Grid.Row="1" Header="Горячие клавиши" Padding="12" Margin="0,12,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="Следующий стимул" Style="{StaticResource RowLabel}"/>
+                <Button Grid.Column="1" x:Name="NextHotkeyBtn" Style="{StaticResource PillButton}"
+                        HorizontalAlignment="Left" MinWidth="220"
+                        Click="NextHotkey_Click"/>
+
+                <TextBlock Grid.Row="1" Text="Выход из эксперимента" Style="{StaticResource RowLabel}"/>
+                <Button Grid.Row="1" Grid.Column="1" x:Name="ExitHotkeyBtn" Style="{StaticResource PillButton}"
+                        HorizontalAlignment="Left" MinWidth="220"
+                        Click="ExitHotkey_Click"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="CaptureHint"
+                           Margin="0,10,0,0" Opacity="0.7"/>
+            </Grid>
+        </GroupBox>
+        <GroupBox Grid.Row="2" Header="Экран (только для расчётов)" Padding="12" Margin="0,12,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Монитор (write_desktop)" Style="{StaticResource RowLabel}"/>
+                <ComboBox Grid.Column="1" x:Name="MonitorCombo" MinWidth="420"/>
+            </Grid>
+        </GroupBox>
+        <GroupBox Grid.Row="3" Header="Запись" Padding="12" Margin="0,12,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="220"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Экран" Style="{StaticResource RowLabel}"/>
+                <CheckBox Grid.Row="0" Grid.Column="1"
+                        x:Name="RecordDesktopCheck"
+                        Content="Записывать экран (desktop.mkv)"/>
+
+                <TextBlock Grid.Row="1" Text="Камера" Style="{StaticResource RowLabel}" Margin="0,8,0,0"/>
+                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,8,0,0">
+                    <CheckBox x:Name="RecordCameraCheck"
+                            Content="Записывать камеру (camera.mkv)"
+                            Checked="RecordCameraCheck_Changed"
+                            Unchecked="RecordCameraCheck_Changed"/>
+
+                    <ComboBox x:Name="CameraCombo" Margin="0,8,0,0" MinWidth="420" IsEnabled="False"/>
+
+                    <TextBlock x:Name="CameraHintText"
+                            Margin="0,6,0,0"
+                            Opacity="0.7"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed"
+                            Text="Не удалось получить список камер."/>
+                </StackPanel>
+                <TextBlock Grid.Row="2" Text="Звук" Style="{StaticResource RowLabel}" Margin="0,8,0,0"/>
+                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,8,0,0">
+                    <CheckBox x:Name="RecordAudioCheck"
+                            Content="Записывать микрофон"
+                            Checked="RecordAudioCheck_Changed"
+                            Unchecked="RecordAudioCheck_Changed"/>
+
+                    <ComboBox x:Name="AudioCombo" Margin="0,8,0,0" MinWidth="420" IsEnabled="False"/>
+
+                    <TextBlock x:Name="AudioHintText"
+                            Margin="0,6,0,0"
+                            Opacity="0.7"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed"
+                            Text="Не удалось получить список микрофонов."/>
+                </StackPanel>
+
+            </Grid>
+        </GroupBox>
+
+
+
+        <!-- Кнопки -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Сохранить" Width="120" Style="{StaticResource PillButton}" Click="Save_Click"/>
+            <Button Content="Закрыть" Width="120" Margin="10,0,0,0" Style="{StaticResource PillButton}" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>
