@@ -65,6 +65,72 @@
                     <ctrl:MetricChart x:Name="HrChart" Grid.Row="1" Grid.Column="0" Margin="0,6,6,0"/>
                     <ctrl:MetricChart x:Name="PpgChart" Grid.Row="1" Grid.Column="1" Margin="6,6,0,0"/>
                 </Grid>
+                
+                <!-- Секция превью взгляда -->
+                <Border Margin="0,12,0,0" Padding="12" Background="#F8F8F8" CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        
+                        <TextBlock Grid.Row="0" 
+                                   Text="Превью взгляда" 
+                                   FontWeight="SemiBold" 
+                                   Margin="0,0,0,8"/>
+                        
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- Мини-окно с точкой взгляда -->
+                            <Border Grid.Column="0" 
+                                    Width="160" 
+                                    Height="120" 
+                                    Background="White" 
+                                    BorderBrush="#CCCCCC" 
+                                    BorderThickness="1" 
+                                    CornerRadius="4" 
+                                    Margin="0,0,12,0">
+                                <Canvas x:Name="GazeCanvas" Background="White">
+                                    <!-- Сетка -->
+                                    <Line X1="0" Y1="60" X2="160" Y2="60" Stroke="#E0E0E0" StrokeThickness="0.5"/>
+                                    <Line X1="80" Y1="0" X2="80" Y2="120" Stroke="#E0E0E0" StrokeThickness="0.5"/>
+                                    
+                                    <!-- Точка взгляда -->
+                                    <Ellipse x:Name="GazePoint" 
+                                             Width="8" Height="8" 
+                                             Fill="Red" 
+                                             Stroke="White" 
+                                             StrokeThickness="1"
+                                             Visibility="Collapsed"/>
+                                    
+                                    <!-- Траектория взгляда -->
+                                    <Polyline x:Name="GazeTrail" 
+                                              Stroke="#4A90E2" 
+                                              StrokeThickness="1" 
+                                              Fill="None"
+                                              Opacity="0.7"/>
+                                </Canvas>
+                            </Border>
+                            
+                            <!-- Информация о взгляде -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock x:Name="GazeStatus" 
+                                           Text="Ожидание данных трекера..." 
+                                           FontSize="12" 
+                                           Foreground="#666666"
+                                           Margin="0,0,0,8"/>
+                                <TextBlock x:Name="GazeCoords" 
+                                           Text="X: -, Y: -" 
+                                           FontSize="11" 
+                                           Foreground="#999999"/>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
             </StackPanel>
         </Border>
 
