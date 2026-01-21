@@ -36,8 +36,14 @@ public partial class DeviceCheckWindow : Window
     private readonly List<MetricPoint> _hrData = new();
     private readonly List<MetricPoint> _ppgData = new();
     private double _chartStartTime;
-    private const int MaxChartPoints = 500;
-    private const double ChartWindowSeconds = 10.0;
+    private const int MaxChartPoints = 2000; // Увеличено для поддержки большего диапазона
+    private const double ChartWindowSeconds = 60.0; // Увеличено до 60 секунд
+
+    // Поля для отслеживания взгляда
+    private TrackerClient? _trackerClient;
+    private double _lastGazeX = 0.5, _lastGazeY = 0.5;
+    private DateTime _lastGazeUpdate = DateTime.MinValue;
+    private CancellationTokenSource? _gazeMonitorCancellationTokenSource;
 
     public DeviceCheckWindow(string expDir, ExperimentFile exp, CancellationToken externalCt)
     {
@@ -63,6 +69,10 @@ public partial class DeviceCheckWindow : Window
 
         _cts?.Cancel();
         StopShimmerCharts();
+        
+        // Останавливаем мониторинг взгляда
+        _gazeMonitorCancellationTokenSource?.Cancel();
+        _gazeMonitorCancellationTokenSource?.Dispose();
 
         if (ShimmerClient != null)
         {
@@ -177,6 +187,10 @@ public partial class DeviceCheckWindow : Window
                 _ = await tracker.GetRecordsAsync(nRecords: 1, ackNumber: 0, ct: ct);
                 row.Status = "ОК";
                 row.Details = "Сервер трекера отвечает.";
+                
+                // Запускаем мониторинг взгляда если трекер доступен
+                _trackerClient = tracker;
+                _ = StartGazeMonitoring(ct); // Игнорируем предупреждение, так как это фоновая задача
             }
             catch (Exception ex)
             {
@@ -351,6 +365,11 @@ public partial class DeviceCheckWindow : Window
             ScChart.Clear("Ожидание данных...");
             HrChart.Clear("Ожидание данных...");
             PpgChart.Clear("Ожидание данных...");
+            
+            // Инициализируем превью взгляда - УДАЛЕНО
+            //GazeStatus.Text = "Ожидание данных трекера...";
+            //GazeCoords.Text = "X: -, Y: -";
+            //GazePoint.Visibility = Visibility.Collapsed;
         });
     }
 
@@ -448,6 +467,97 @@ public partial class DeviceCheckWindow : Window
             var ppgMax = ppgFiltered.Max(p => p.Value);
             var ppgRange = Math.Max(1.0, ppgMax - ppgMin);
             PpgChart.SetData(ppgFiltered, tMin, tMax, ppgMin - ppgRange * 0.1, ppgMax + ppgRange * 0.1, double.NaN, "Фотоплетизмограмма (PPG)");
+        }
+    }
+    
+    private async Task StartGazeMonitoring(CancellationToken ct)
+    {
+        _gazeMonitorCancellationTokenSource?.Cancel();
+        _gazeMonitorCancellationTokenSource?.Dispose();
+        _gazeMonitorCancellationTokenSource = new CancellationTokenSource();
+        
+        var linkedCt = CancellationTokenSource.CreateLinkedTokenSource(ct, _gazeMonitorCancellationTokenSource.Token).Token;
+        
+        // Обновляем UI статус - УДАЛЕНО
+        //Dispatcher.BeginInvoke(() =>
+        //{
+        //    GazeStatus.Text = "Подключение к трекеру...";
+        //});
+        
+        try
+        {
+            while (!linkedCt.IsCancellationRequested)
+            {
+                var records = await _trackerClient!.GetRecordsAsync(nRecords: 5, ackNumber: 0, ct: linkedCt);
+                
+                foreach (var record in records)
+                {
+                    if (record.Contains("<REC", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ProcessGazeRecord(record);
+                    }
+                }
+                
+                await Task.Delay(100, linkedCt); // Обновляем 10 раз в секунду
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Ожидаемое поведение при отмене
+        }
+        catch (Exception ex)
+        {
+            // Обновляем UI при ошибке - УДАЛЕНО
+            //Dispatcher.BeginInvoke(() =>
+            //{
+            //    GazeStatus.Text = $"Ошибка: {ShortErr(ex)}";
+            //});
+            System.Diagnostics.Debug.WriteLine($"Ошибка мониторинга взгляда: {ex.Message}");
+        }
+    }
+    
+    private void ProcessGazeRecord(string record)
+    {
+        try
+        {
+            // Парсим запись типа: <REC PO XN="0.123" YN="0.456" TIME="123456789" CNT="1"/>
+            var timeStr = TrackerClient.TryGetAttr(record, "TIME");
+            var xnStr = TrackerClient.TryGetAttr(record, "XN");
+            var ynStr = TrackerClient.TryGetAttr(record, "YN");
+            
+            if (timeStr != null && xnStr != null && ynStr != null)
+            {
+                if (double.TryParse(xnStr, out var xn) && double.TryParse(ynStr, out var yn))
+                {
+                    // Обновляем последнюю позицию взгляда
+                    _lastGazeX = Math.Max(0, Math.Min(1, xn)); // Нормализуем в диапазон 0-1
+                    _lastGazeY = Math.Max(0, Math.Min(1, yn));
+                    _lastGazeUpdate = DateTime.Now;
+                    
+                    // Обновляем UI - УДАЛЕНО
+                    //Dispatcher.BeginInvoke(() =>
+                    //{
+                    //    // Позиционируем красную точку в превью
+                    //    var pointX = _lastGazeX * 160 - 4; // Центрируем точку 8px
+                    //    var pointY = _lastGazeY * 120 - 4;
+                    //    
+                    //    System.Windows.Controls.Canvas.SetLeft(GazePoint, pointX);
+                    //    System.Windows.Controls.Canvas.SetTop(GazePoint, pointY);
+                    //    GazePoint.Visibility = Visibility.Visible;
+                    //    
+                    //    // Обновляем информацию
+                    //    GazeStatus.Text = "Трекер активен";
+                    //    GazeCoords.Text = $"X: {_lastGazeX:F3}, Y: {_lastGazeY:F3}";
+                    //});
+                    
+                    System.Diagnostics.Debug.WriteLine($"Взгляд: X={_lastGazeX:F3}, Y={_lastGazeY:F3}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Логируем ошибку, но не прерываем обработку
+            System.Diagnostics.Debug.WriteLine($"Ошибка обработки записи взгляда: {ex.Message}");
         }
     }
 }
