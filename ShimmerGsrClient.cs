@@ -31,7 +31,6 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
     private CancellationTokenSource? _udpCts;
     private Task? _udpTask;
     private bool _streamingStarted;
-    private bool _processStarted;
     private int _stopping; // защита от двойного StopAsync
     
     public event Action<ShimmerDataPoint>? DataReceived;

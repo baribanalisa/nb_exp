@@ -1,4 +1,4 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -864,14 +864,12 @@ public partial class MainWindow : Window
         MkLogMouseUp(e);
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
             var vm = (MainViewModel)DataContext;
             _experimentsRoot = vm.ExperimentsRoot;  // чтобы твой импорт/запуск не ломать
-           // await vm.ReloadExperimentsAsync(selectUid: null);
-
         }
         catch (Exception ex)
         {
