@@ -80,7 +80,7 @@ public partial class AnalysisWindow : Window
 
     private string? _currentStimUid;
     private bool _videoTimeMode;                 // false = превью (все фиксации), true = по времени
-    private const double FixTimeSliceSec = 0.8;  // “окно” отображения (сек). Подберёшь как в Vala
+    private const double FixTimeSliceSec = 30.0;  // “окно” отображения (сек). Подберёшь как в Vala
     private StimulusVizSettings _currentVizSettings = new();
     private bool _suppressVizUi;
     private PlaybackState _playbackState = PlaybackState.Stop;
