@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 // === ИСПРАВЛЕНИЕ КОНФЛИКТОВ ===
@@ -33,18 +32,9 @@ public sealed class MetricChart : FrameworkElement
     private string _yUnit = "";
     private string _emptyText = "—";
 
-    // Свойства для скроллинга и зума
-    private double _visibleTMin, _visibleTMax;
-    private double _totalTMin, _totalTMax;
-    private double _zoomFactor = 1.0;
-    private bool _isDragging = false;
-    private double _dragStartX = 0;
-
     private string _xUnit = "с";
 
     private const double Pad = 10;
-    private const double MinZoom = 0.1;
-    private const double MaxZoom = 1.0;
 
     private static readonly Brush Bg = new SolidColorBrush(Color.FromRgb(0xFA, 0xFA, 0xFA));
     private static readonly Brush Border = new SolidColorBrush(Color.FromArgb(0x22, 0, 0, 0));
@@ -86,9 +76,6 @@ public sealed class MetricChart : FrameworkElement
         _series = series;
         _fixBands = fixBands;
 
-        _totalTMin = tMin;
-        _totalTMax = Math.Max(tMin + 1e-6, tMax);
-
         _tMin = tMin;
         _tMax = Math.Max(tMin + 1e-6, tMax);
 
@@ -101,10 +88,6 @@ public sealed class MetricChart : FrameworkElement
         _xUnit = xUnit ?? "с";
 
         _emptyText = "—";
-
-        _zoomFactor = 1.0;
-        _visibleTMin = _totalTMin;
-        _visibleTMax = _totalTMax;
 
         InvalidateVisual();
     }
@@ -123,140 +106,12 @@ public sealed class MetricChart : FrameworkElement
             tMin, tMax, yMin, yMax, threshold, title, fixBands, yUnit, xUnit);
     }
 
-    // Добавляем обработчики событий
-    protected override void OnMouseWheel(MouseWheelEventArgs e)
-    {
-        base.OnMouseWheel(e);
-        
-        if (_totalTMax <= _totalTMin) return;
-        
-        var zoomFactor = e.Delta > 0 ? 0.8 : 1.25; // Уменьшаем/увеличиваем масштаб
-        var mousePos = e.GetPosition(this);
-        
-        ZoomAt(mousePos, zoomFactor);
-        e.Handled = true;
-    }
-
-    protected override void OnMouseDown(MouseButtonEventArgs e)
-    {
-        base.OnMouseDown(e);
-        
-        if (e.LeftButton == MouseButtonState.Pressed)
-        {
-            _isDragging = true;
-            _dragStartX = e.GetPosition(this).X;
-            CaptureMouse();
-        }
-    }
-
-    protected override void OnMouseUp(MouseButtonEventArgs e)
-    {
-        base.OnMouseUp(e);
-        
-        if (e.LeftButton == MouseButtonState.Released)
-        {
-            _isDragging = false;
-            ReleaseMouseCapture();
-        }
-    }
-
-    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
-    {
-        base.OnMouseMove(e);
-        
-        if (_isDragging && e.LeftButton == MouseButtonState.Pressed)
-        {
-            var currentPos = e.GetPosition(this);
-            var deltaX = currentPos.X - _dragStartX;
-            _dragStartX = currentPos.X;
-            
-            ScrollByDelta(deltaX);
-        }
-    }
-
-    private void ZoomAt(Point mousePos, double zoomDelta)
-    {
-        if (_totalTMax <= _totalTMin) return;
-
-        var plot = GetPlotRect();
-        if (plot.Width <= 0) return;
-
-        var totalRange = _totalTMax - _totalTMin;
-        var oldVisibleRange = _visibleTMax - _visibleTMin;
-        if (oldVisibleRange <= 0) oldVisibleRange = totalRange;
-
-        var newVisibleRange = oldVisibleRange * zoomDelta;
-        var minVisibleRange = totalRange * MinZoom;
-        var maxVisibleRange = totalRange * MaxZoom;
-        newVisibleRange = Math.Max(minVisibleRange, Math.Min(maxVisibleRange, newVisibleRange));
-
-        if (Math.Abs(newVisibleRange - oldVisibleRange) < 1e-6) return;
-
-        var relativeX = (mousePos.X - plot.Left) / plot.Width;
-        relativeX = Math.Max(0, Math.Min(1, relativeX));
-
-        var anchorTime = _visibleTMin + relativeX * oldVisibleRange;
-        var newVisibleTMin = anchorTime - relativeX * newVisibleRange;
-        var newVisibleTMax = newVisibleTMin + newVisibleRange;
-
-        if (newVisibleTMin < _totalTMin)
-        {
-            newVisibleTMin = _totalTMin;
-            newVisibleTMax = newVisibleTMin + newVisibleRange;
-        }
-
-        if (newVisibleTMax > _totalTMax)
-        {
-            newVisibleTMax = _totalTMax;
-            newVisibleTMin = newVisibleTMax - newVisibleRange;
-        }
-
-        _visibleTMin = newVisibleTMin;
-        _visibleTMax = newVisibleTMax;
-        _zoomFactor = totalRange > 0 ? (_visibleTMax - _visibleTMin) / totalRange : 1.0;
-
-        InvalidateVisual();
-    }
-
-    private void ScrollByDelta(double deltaX)
-    {
-        if (_totalTMax <= _totalTMin) return;
-
-        var plot = GetPlotRect();
-        if (plot.Width <= 0) return;
-
-        var visibleRange = _visibleTMax - _visibleTMin;
-        if (visibleRange <= 0) return;
-
-        var scrollAmount = -deltaX / plot.Width * visibleRange;
-
-        var newTMin = _visibleTMin + scrollAmount;
-        var newTMax = _visibleTMax + scrollAmount;
-
-        if (newTMin < _totalTMin)
-        {
-            newTMin = _totalTMin;
-            newTMax = newTMin + visibleRange;
-        }
-
-        if (newTMax > _totalTMax)
-        {
-            newTMax = _totalTMax;
-            newTMin = newTMax - visibleRange;
-        }
-
-        _visibleTMin = newTMin;
-        _visibleTMax = newTMax;
-
-        InvalidateVisual();
-    }
-
     private Rect GetPlotRect()
     {
         var w = ActualWidth;
         var h = ActualHeight;
         if (w <= 2 || h <= 2) return new Rect(0, 0, 0, 0);
-        
+
         return new Rect(Pad, 24, Math.Max(1, w - 2 * Pad), Math.Max(1, h - 24 - Pad));
     }
 
@@ -301,8 +156,8 @@ public sealed class MetricChart : FrameworkElement
         {
             foreach (var (s, e) in _fixBands)
             {
-                var x1 = XVisible(s, plot);
-                var x2 = XVisible(e, plot);
+                var x1 = X(s, plot);
+                var x2 = X(e, plot);
                 if (x2 < plot.Left || x1 > plot.Right) continue;
 
                 var rr = new Rect(
@@ -333,10 +188,10 @@ public sealed class MetricChart : FrameworkElement
                 bool started = false;
                 foreach (var p in series.Points)
                 {
-                    if (p.TimeSec < _visibleTMin || p.TimeSec > _visibleTMax) continue;
+                    if (p.TimeSec < _tMin || p.TimeSec > _tMax) continue;
                     if (double.IsNaN(p.Value) || double.IsInfinity(p.Value)) continue;
 
-                    var pt = new Point(XVisible(p.TimeSec, plot), Y(p.Value, plot));
+                    var pt = new Point(X(p.TimeSec, plot), Y(p.Value, plot));
                     if (!started)
                     {
                         g.BeginFigure(pt, false, false);
@@ -362,8 +217,8 @@ public sealed class MetricChart : FrameworkElement
 
         // x labels (min/max) с единицами измерения
         var xUnitSuffix = string.IsNullOrWhiteSpace(_xUnit) ? "" : $" {_xUnit}";
-        DrawText(dc, $"{_visibleTMin:0.0}{xUnitSuffix}", 10, new Point(plot.Left, plot.Bottom + 2));
-        DrawTextRight(dc, $"{_visibleTMax:0.0}{xUnitSuffix}", 10, new Point(plot.Right, plot.Bottom + 2));
+        DrawText(dc, $"{_tMin:0.0}{xUnitSuffix}", 10, new Point(plot.Left, plot.Bottom + 2));
+        DrawTextRight(dc, $"{_tMax:0.0}{xUnitSuffix}", 10, new Point(plot.Right, plot.Bottom + 2));
     }
 
     private double X(double t, Rect plot)
@@ -371,13 +226,6 @@ public sealed class MetricChart : FrameworkElement
         var d = _tMax - _tMin;
         if (d <= 1e-9) d = 1e-9;
         return plot.Left + (t - _tMin) / d * plot.Width;
-    }
-
-    private double XVisible(double t, Rect plot)
-    {
-        var d = _visibleTMax - _visibleTMin;
-        if (d <= 1e-9) d = 1e-9;
-        return plot.Left + (t - _visibleTMin) / d * plot.Width;
     }
 
     private double Y(double v, Rect plot)
