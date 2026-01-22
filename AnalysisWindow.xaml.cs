@@ -2532,7 +2532,7 @@ public partial class AnalysisWindow : Window
             if (_detectSettings.MaxSpeedDegPerSec > 0)
                 yMax = Math.Min(yMax, _detectSettings.MaxSpeedDegPerSec);
 
-            MetricChart.SetData(series, tMin, tMax, 0, yMax, thr, "IVT: скорость (°/с)", bands);
+            MetricChart.SetData(series, tMin, tMax, 0, yMax, thr, "IVT: скорость", bands, "°/с");
         }
         else
         {
@@ -2547,7 +2547,7 @@ public partial class AnalysisWindow : Window
             double maxObserved = series.Max(s => s.Points.Max(p => p.Value));
             double yMax = Math.Max(thr * 2.0, maxObserved * 1.1);
 
-            MetricChart.SetData(series, tMin, tMax, 0, yMax, thr, "IDT: дисперсия (px)", bands);
+            MetricChart.SetData(series, tMin, tMax, 0, yMax, thr, "IDT: дисперсия", bands, "px");
         }
     }
 
