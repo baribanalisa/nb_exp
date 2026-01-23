@@ -68,6 +68,10 @@ public partial class AnalysisWindow : Window
     private readonly Dictionary<string, List<Fixation>> _fixCache = new();
     private readonly Dictionary<string, double> _stimDurationCache = new();
     private readonly Dictionary<string, StimulusVizSettings> _vizCache = new();
+    
+    private readonly Dictionary<string, List<GsrSample>> _gsrCache = new();
+    private string? _kgrDeviceUid;
+    private bool _hasKgr;
 
     // time-slice (для картинок/цвета)
     private string? _sliceStimUid;
@@ -96,6 +100,8 @@ public partial class AnalysisWindow : Window
     private LibVLCSharp.Shared.Media? _currentMedia;
     private static string K(string resultUid, string stimUid, EyeSelection eye) => $"{resultUid}|{stimUid}|{eye}";
     private static string KF(string resultUid, string stimUid) => $"{resultUid}|{stimUid}";
+    
+    private static string KG(string resultUid, string stimUid) => $"{resultUid}|{stimUid}|kgr";
 
 
     private DispatcherTimer? _timer;
@@ -258,6 +264,7 @@ public partial class AnalysisWindow : Window
         ApplyVisualizationSettings();
         LoadResultInfo();
         LoadStimuli();
+         InitKgrPanel();
         LoadResultsDisplay();
         // В Window_Loaded
         UpdateAoiColorBtnPreview();
