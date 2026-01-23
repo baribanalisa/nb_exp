@@ -68,9 +68,6 @@ public partial class AnalysisWindow : Window
     private readonly Dictionary<string, List<Fixation>> _fixCache = new();
     private readonly Dictionary<string, double> _stimDurationCache = new();
     private readonly Dictionary<string, StimulusVizSettings> _vizCache = new();
-    private readonly Dictionary<string, List<GsrSample>> _gsrCache = new();
-    private bool _hasKgr;
-    private string? _kgrDeviceUid;
 
     // time-slice (для картинок/цвета)
     private string? _sliceStimUid;
@@ -99,7 +96,6 @@ public partial class AnalysisWindow : Window
     private LibVLCSharp.Shared.Media? _currentMedia;
     private static string K(string resultUid, string stimUid, EyeSelection eye) => $"{resultUid}|{stimUid}|{eye}";
     private static string KF(string resultUid, string stimUid) => $"{resultUid}|{stimUid}";
-    private static string KG(string resultUid, string stimUid) => $"{resultUid}|{stimUid}";
 
 
     private DispatcherTimer? _timer;
@@ -117,36 +113,12 @@ public partial class AnalysisWindow : Window
         AllowTrailingCommas = true,
     };
 
-    private readonly record struct GsrSample(double TimeSec, double Sr, double Sc, double Hr, double Ppg);
-
     private IEnumerable<ResultDisplayItem> EnumerateVisibleResults()
     {
         foreach (var r in _resultsDisplay)
         {
             if (r.IsVisible)
                 yield return r;
-        }
-    }
-
-    private void InitKgrPanel()
-    {
-        var kgrDevice = _exp?.Devices
-            .FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase));
-
-        _kgrDeviceUid = kgrDevice?.Uid;
-        _hasKgr = !string.IsNullOrWhiteSpace(_kgrDeviceUid);
-
-        if (_hasKgr)
-        {
-            KgrChartsPanel.Visibility = Visibility.Visible;
-            KgrSpacerColumn.Width = new GridLength(14);
-            KgrColumn.Width = new GridLength(360);
-        }
-        else
-        {
-            KgrChartsPanel.Visibility = Visibility.Collapsed;
-            KgrSpacerColumn.Width = new GridLength(0);
-            KgrColumn.Width = new GridLength(0);
         }
     }
 
@@ -197,27 +169,12 @@ public partial class AnalysisWindow : Window
         _initialSelectedCount = _initialSelectedResultUids.Count;
         _primaryResultUid = results.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.ResultUid))?.ResultUid?.Trim();
 
-        _exp = exp ?? TryLoadExperiment(expDir);
+        _exp = exp;
         _visualSettings = AppConfigManager.LoadAnalysisVisualizationSettings();
 
         Title = _initialSelectedCount == 1 && !string.IsNullOrWhiteSpace(_primaryResultUid)
             ? $"Анализ — {_primaryResultUid}"
             : $"Анализ — {_initialSelectedCount} результатов";
-    }
-
-    private static ExperimentFile? TryLoadExperiment(string expDir)
-    {
-        var path = Path.Combine(expDir, "exp.json");
-        if (!File.Exists(path)) return null;
-
-        try
-        {
-            return JsonSerializer.Deserialize<ExperimentFile>(File.ReadAllText(path), _jsonOpts);
-        }
-        catch
-        {
-            return null;
-        }
     }
 
 
@@ -227,7 +184,6 @@ public partial class AnalysisWindow : Window
         LoadResultInfo();
         LoadStimuli();
         LoadResultsDisplay();
-        InitKgrPanel();
         // В Window_Loaded
         UpdateAoiColorBtnPreview();
         StimuliList.ItemsSource = _stimuli;
@@ -255,161 +211,6 @@ public partial class AnalysisWindow : Window
         try { DisposeVlc(); } catch { }
     }
     private string RawCacheKey(string resultUid, string stimUid) => K(resultUid, stimUid, _detectSettings.Eye);
-
-    private string GsrCacheKey(string resultUid, string stimUid) => KG(resultUid, stimUid);
-
-    private List<GsrSample> GetGsrSamplesForStim(string resultUid, string stimUid)
-    {
-        var key = GsrCacheKey(resultUid, stimUid);
-        if (_gsrCache.TryGetValue(key, out var cached)) return cached;
-
-        var list = ReadGsrSamplesForStim(resultUid, stimUid);
-        _gsrCache[key] = list;
-        return list;
-    }
-
-    private List<GsrSample> ReadGsrSamplesForStim(string resultUid, string stimUid)
-    {
-        if (string.IsNullOrWhiteSpace(_kgrDeviceUid)) return new();
-
-        var path = Path.Combine(_expDir, "results", resultUid, stimUid, _kgrDeviceUid);
-        if (!File.Exists(path)) return new();
-
-        var list = new List<GsrSample>(2048);
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        Span<byte> buf = stackalloc byte[GsrData.Size];
-
-        double t0 = double.NaN;
-        double prevT = double.NegativeInfinity;
-
-        while (true)
-        {
-            int n = fs.Read(buf);
-            if (n == 0) break;
-            if (n != GsrData.Size) break;
-
-            double t = ReadD(buf, 0);
-            if (!double.IsFinite(t)) continue;
-            if (t <= prevT) continue;
-            prevT = t;
-
-            if (double.IsNaN(t0)) t0 = t;
-            double timeSec = t - t0;
-            if (!double.IsFinite(timeSec) || timeSec < 0) continue;
-
-            double hr = ReadD(buf, 8);
-            double sr = ReadD(buf, 16);
-            double sc = ReadD(buf, 24);
-            double ppg = ReadD(buf, 40);
-
-            list.Add(new GsrSample(timeSec, sr, sc, hr, ppg));
-        }
-
-        return list;
-
-        static double ReadD(Span<byte> b, int off) =>
-            BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(b.Slice(off, 8)));
-    }
-
-    private void UpdateKgrChartsForStim(string stimUid)
-    {
-        if (!_hasKgr || string.IsNullOrWhiteSpace(stimUid))
-            return;
-
-        if (string.IsNullOrWhiteSpace(_primaryResultUid))
-        {
-            ClearKgrCharts("Нет данных КГР для стимула");
-            return;
-        }
-
-        var samples = GetGsrSamplesForStim(_primaryResultUid, stimUid);
-        if (samples.Count < 2)
-        {
-            ClearKgrCharts("Нет данных КГР для стимула");
-            return;
-        }
-
-        double tMin = samples[0].TimeSec;
-        double tMax = samples[^1].TimeSec;
-        if (tMax <= tMin) tMax = tMin + 1;
-
-        var srPoints = samples
-            .Where(s => double.IsFinite(s.Sr))
-            .Select(s => new MetricPoint(s.TimeSec, s.Sr))
-            .ToList();
-        var scPoints = samples
-            .Where(s => double.IsFinite(s.Sc))
-            .Select(s => new MetricPoint(s.TimeSec, s.Sc))
-            .ToList();
-        var hrPoints = samples
-            .Where(s => double.IsFinite(s.Hr))
-            .Select(s => new MetricPoint(s.TimeSec, s.Hr))
-            .ToList();
-        var ppgPoints = samples
-            .Where(s => double.IsFinite(s.Ppg))
-            .Select(s => new MetricPoint(s.TimeSec, s.Ppg))
-            .ToList();
-
-        if (srPoints.Count > 0)
-        {
-            var min = srPoints.Min(p => p.Value);
-            var max = srPoints.Max(p => p.Value);
-            var range = Math.Max(1.0, max - min);
-            KgrSrChart.SetData(srPoints, tMin, tMax, min - range * 0.1, max + range * 0.1, double.NaN,
-                "КГР: Сопротивление (SR)", null, "кОм");
-        }
-        else
-        {
-            KgrSrChart.Clear("Нет данных SR");
-        }
-
-        if (scPoints.Count > 0)
-        {
-            var min = scPoints.Min(p => p.Value);
-            var max = scPoints.Max(p => p.Value);
-            var range = Math.Max(1.0, max - min);
-            KgrScChart.SetData(scPoints, tMin, tMax, min - range * 0.1, max + range * 0.1, double.NaN,
-                "КГР: Проводимость (SC)", null, "мкСм");
-        }
-        else
-        {
-            KgrScChart.Clear("Нет данных SC");
-        }
-
-        if (hrPoints.Count > 0)
-        {
-            var min = Math.Max(0, hrPoints.Min(p => p.Value));
-            var max = Math.Min(200, hrPoints.Max(p => p.Value));
-            if (max <= min) max = min + 1;
-            KgrHrChart.SetData(hrPoints, tMin, tMax, min - 10, max + 10, double.NaN,
-                "Пульс (HR)", null, "уд/мин");
-        }
-        else
-        {
-            KgrHrChart.Clear("Нет данных HR");
-        }
-
-        if (ppgPoints.Count > 0)
-        {
-            var min = ppgPoints.Min(p => p.Value);
-            var max = ppgPoints.Max(p => p.Value);
-            var range = Math.Max(1.0, max - min);
-            KgrPpgChart.SetData(ppgPoints, tMin, tMax, min - range * 0.1, max + range * 0.1, double.NaN,
-                "Фотоплетизмограмма (PPG)", null, "усл.ед.");
-        }
-        else
-        {
-            KgrPpgChart.Clear("Нет данных PPG");
-        }
-    }
-
-    private void ClearKgrCharts(string message)
-    {
-        KgrSrChart.Clear(message);
-        KgrScChart.Clear(message);
-        KgrHrChart.Clear(message);
-        KgrPpgChart.Clear(message);
-    }
 
     private List<RawGazeSample> GetRawSamplesForStim(string resultUid, string stimUid)
     {
@@ -1232,7 +1033,6 @@ public partial class AnalysisWindow : Window
 
         _currentStimIsVideo = false;
         SetPlaybackState(PlaybackState.Stop);
-        UpdateKgrChartsForStim(st.Uid);
 
         if (st.FilePath != null && st.IsImage)
         {
@@ -2068,7 +1868,7 @@ public partial class AnalysisWindow : Window
         _vizCache[stimUid] = settings.Clone();
         return settings.Clone();
     }
-
+    
     private StimulusHeatmapSettings CreateHeatmapSettingsFromVisualizationSettings()
     {
         return new StimulusHeatmapSettings
