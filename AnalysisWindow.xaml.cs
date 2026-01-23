@@ -122,6 +122,81 @@ public partial class AnalysisWindow : Window
         }
     }
 
+    private void InitKgrPanel()
+    {
+        var kgrDevice = _exp?.Devices
+            .FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase));
+
+        _kgrDeviceUid = kgrDevice?.Uid;
+        _hasKgr = !string.IsNullOrWhiteSpace(_kgrDeviceUid);
+
+        if (!_hasKgr)
+            TryResolveKgrDeviceUid(_stimuli.FirstOrDefault()?.Uid);
+
+        ApplyKgrPanelVisibility();
+    }
+
+    private void ApplyKgrPanelVisibility()
+    {
+        if (_hasKgr)
+        {
+            KgrChartsPanel.Visibility = Visibility.Visible;
+            KgrSpacerColumn.Width = new GridLength(14);
+            KgrColumn.Width = new GridLength(360);
+        }
+        else
+        {
+            KgrChartsPanel.Visibility = Visibility.Collapsed;
+            KgrSpacerColumn.Width = new GridLength(0);
+            KgrColumn.Width = new GridLength(0);
+        }
+    }
+
+    private bool TryResolveKgrDeviceUid(string? stimUid)
+    {
+        if (!string.IsNullOrWhiteSpace(_kgrDeviceUid))
+        {
+            _hasKgr = true;
+            return true;
+        }
+
+        var kgrDevice = _exp?.Devices
+            .FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(kgrDevice?.Uid))
+        {
+            _kgrDeviceUid = kgrDevice!.Uid;
+            _hasKgr = true;
+            return true;
+        }
+
+        var targetStim = string.IsNullOrWhiteSpace(stimUid) ? _stimuli.FirstOrDefault()?.Uid : stimUid;
+        if (string.IsNullOrWhiteSpace(targetStim))
+            return false;
+
+        IEnumerable<ResultDisplayItem> resultsToScan = EnumerateVisibleResults().ToList();
+        if (!resultsToScan.Any())
+            resultsToScan = _resultsDisplay;
+
+        foreach (var result in resultsToScan)
+        {
+            var stimDir = Path.Combine(_expDir, "results", result.ResultUid, targetStim);
+            if (!Directory.Exists(stimDir)) continue;
+
+            foreach (var file in Directory.EnumerateFiles(stimDir))
+            {
+                var info = new FileInfo(file);
+                if (info.Length < GsrData.Size) continue;
+                if (info.Length % GsrData.Size != 0) continue;
+
+                _kgrDeviceUid = Path.GetFileName(file);
+                _hasKgr = true;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // Добавьте этот метод в AnalysisWindow.xaml.cs (например, рядом с BuildHeatmapSamples)
     private void AoiType_Rect_Checked(object sender, RoutedEventArgs e) => _currentAoiType = AoiType.Rectangle;
     private void AoiType_Ellipse_Checked(object sender, RoutedEventArgs e) => _currentAoiType = AoiType.Ellipse;
@@ -211,6 +286,177 @@ public partial class AnalysisWindow : Window
         try { DisposeVlc(); } catch { }
     }
     private string RawCacheKey(string resultUid, string stimUid) => K(resultUid, stimUid, _detectSettings.Eye);
+
+    private string GsrCacheKey(string resultUid, string stimUid) => KG(resultUid, stimUid);
+
+    private List<GsrSample> GetGsrSamplesForStim(string resultUid, string stimUid)
+    {
+        var key = GsrCacheKey(resultUid, stimUid);
+        if (_gsrCache.TryGetValue(key, out var cached)) return cached;
+
+        var list = ReadGsrSamplesForStim(resultUid, stimUid);
+        _gsrCache[key] = list;
+        return list;
+    }
+
+    private List<GsrSample> ReadGsrSamplesForStim(string resultUid, string stimUid)
+    {
+        if (string.IsNullOrWhiteSpace(_kgrDeviceUid)) return new();
+
+        var path = Path.Combine(_expDir, "results", resultUid, stimUid, _kgrDeviceUid);
+        if (!File.Exists(path)) return new();
+
+        var list = new List<GsrSample>(2048);
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        Span<byte> buf = stackalloc byte[GsrData.Size];
+
+        double t0 = double.NaN;
+        double prevT = double.NegativeInfinity;
+
+        while (true)
+        {
+            int n = fs.Read(buf);
+            if (n == 0) break;
+            if (n != GsrData.Size) break;
+
+            double t = ReadD(buf, 0);
+            if (!double.IsFinite(t)) continue;
+            if (t <= prevT) continue;
+            prevT = t;
+
+            if (double.IsNaN(t0)) t0 = t;
+            double timeSec = t - t0;
+            if (!double.IsFinite(timeSec) || timeSec < 0) continue;
+
+            double hr = ReadD(buf, 8);
+            double sr = ReadD(buf, 16);
+            double sc = ReadD(buf, 24);
+            double ppg = ReadD(buf, 40);
+
+            list.Add(new GsrSample(timeSec, sr, sc, hr, ppg));
+        }
+
+        return list;
+
+        static double ReadD(Span<byte> b, int off) =>
+            BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(b.Slice(off, 8)));
+    }
+
+    private void UpdateKgrChartsForStim(string stimUid)
+    {
+        if (string.IsNullOrWhiteSpace(stimUid))
+            return;
+
+        if (!_hasKgr && !TryResolveKgrDeviceUid(stimUid))
+        {
+            ApplyKgrPanelVisibility();
+            return;
+        }
+
+        ApplyKgrPanelVisibility();
+
+        var sources = new List<(ResultDisplayItem Result, List<GsrSample> Samples)>();
+        foreach (var result in EnumerateVisibleResults())
+        {
+            var samples = GetGsrSamplesForStim(result.ResultUid, stimUid);
+            if (samples.Count < 2) continue;
+            sources.Add((result, samples));
+        }
+
+        if (sources.Count == 0)
+        {
+            ClearKgrCharts("Нет данных КГР для стимула");
+            return;
+        }
+
+        double tMin = sources.Min(s => s.Samples[0].TimeSec);
+        double tMax = sources.Max(s => s.Samples[^1].TimeSec);
+        if (tMax <= tMin) tMax = tMin + 1;
+
+        if (TryBuildMetricSeries(sources, s => s.Sr, out var srSeries, out var srMin, out var srMax))
+        {
+            var range = Math.Max(1.0, srMax - srMin);
+            KgrSrChart.SetData(srSeries, tMin, tMax, srMin - range * 0.1, srMax + range * 0.1, double.NaN,
+                "КГР: Сопротивление (SR)", null, "кОм");
+        }
+        else
+        {
+            KgrSrChart.Clear("Нет данных SR");
+        }
+
+        if (TryBuildMetricSeries(sources, s => s.Sc, out var scSeries, out var scMin, out var scMax))
+        {
+            var range = Math.Max(1.0, scMax - scMin);
+            KgrScChart.SetData(scSeries, tMin, tMax, scMin - range * 0.1, scMax + range * 0.1, double.NaN,
+                "КГР: Проводимость (SC)", null, "мкСм");
+        }
+        else
+        {
+            KgrScChart.Clear("Нет данных SC");
+        }
+
+        if (TryBuildMetricSeries(sources, s => s.Hr, out var hrSeries, out var hrMin, out var hrMax))
+        {
+            hrMin = Math.Max(0, hrMin);
+            hrMax = Math.Min(200, hrMax);
+            if (hrMax <= hrMin) hrMax = hrMin + 1;
+            KgrHrChart.SetData(hrSeries, tMin, tMax, hrMin - 10, hrMax + 10, double.NaN,
+                "Пульс (HR)", null, "уд/мин");
+        }
+        else
+        {
+            KgrHrChart.Clear("Нет данных HR");
+        }
+
+        if (TryBuildMetricSeries(sources, s => s.Ppg, out var ppgSeries, out var ppgMin, out var ppgMax))
+        {
+            var range = Math.Max(1.0, ppgMax - ppgMin);
+            KgrPpgChart.SetData(ppgSeries, tMin, tMax, ppgMin - range * 0.1, ppgMax + range * 0.1, double.NaN,
+                "Фотоплетизмограмма (PPG)", null, "усл.ед.");
+        }
+        else
+        {
+            KgrPpgChart.Clear("Нет данных PPG");
+        }
+
+        static bool TryBuildMetricSeries(
+            IReadOnlyList<(ResultDisplayItem Result, List<GsrSample> Samples)> sources,
+            Func<GsrSample, double> selector,
+            out List<MetricSeries> series,
+            out double min,
+            out double max)
+        {
+            series = new List<MetricSeries>(sources.Count);
+            min = double.PositiveInfinity;
+            max = double.NegativeInfinity;
+
+            foreach (var source in sources)
+            {
+                var points = new List<MetricPoint>(source.Samples.Count);
+                foreach (var sample in source.Samples)
+                {
+                    var value = selector(sample);
+                    if (!double.IsFinite(value)) continue;
+                    points.Add(new MetricPoint(sample.TimeSec, value));
+                    if (value < min) min = value;
+                    if (value > max) max = value;
+                }
+
+                if (points.Count > 0)
+                    series.Add(new MetricSeries(points, source.Result.Color));
+            }
+
+            return series.Count > 0 && double.IsFinite(min) && double.IsFinite(max);
+        }
+    }
+
+    private void ClearKgrCharts(string message)
+    {
+        KgrSrChart.Clear(message);
+        KgrScChart.Clear(message);
+        KgrHrChart.Clear(message);
+        KgrPpgChart.Clear(message);
+    }
 
     private List<RawGazeSample> GetRawSamplesForStim(string resultUid, string stimUid)
     {
@@ -696,6 +942,9 @@ public partial class AnalysisWindow : Window
         }
 
         RefreshCurrentFixations();
+
+        if (_currentStimUid != null)
+            UpdateKgrChartsForStim(_currentStimUid);
     }
 
     private void ResultColorSwatch_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
