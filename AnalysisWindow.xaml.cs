@@ -69,13 +69,20 @@ public partial class AnalysisWindow : Window
     private readonly Dictionary<string, double> _stimDurationCache = new();
     private readonly Dictionary<string, StimulusVizSettings> _vizCache = new();
     private readonly Dictionary<string, List<GsrSample>> _gsrCache = new();
+
+    // КГР (Shimmer GSR): поддерживаем несколько форматов записи
+    // legacy (как GsrData.Size): 88 байт (6 double + battery + reserved + padding)
+    // packed: 81 байт (6 double + battery + reserved без паддинга)
+    // wire-only: 48 байт (6 double)
+    private const int PackedGsrRecordSize = 81;
+    private const int WireGsrRecordSize = 48;
+
     private string? _kgrDeviceUid;
+    private int _kgrRecordSize = GsrData.Size;
     private bool _hasKgr;
 
     
-    private readonly Dictionary<string, List<GsrSample>> _gsrCache = new();
-    private string? _kgrDeviceUid;
-    private bool _hasKgr;
+    
 
     // time-slice (для картинок/цвета)
     private string? _sliceStimUid;
@@ -106,7 +113,7 @@ public partial class AnalysisWindow : Window
     private static string KF(string resultUid, string stimUid) => $"{resultUid}|{stimUid}";
     private static string KG(string resultUid, string stimUid) => $"{resultUid}|{stimUid}|kgr";
     
-    private static string KG(string resultUid, string stimUid) => $"{resultUid}|{stimUid}|kgr";
+  
 
 
     private DispatcherTimer? _timer;
@@ -133,16 +140,20 @@ public partial class AnalysisWindow : Window
         }
     }
 
-    private void InitKgrPanel()
+        private void InitKgrPanel()
     {
         var kgrDevice = _exp?.Devices
             .FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase));
 
-        _kgrDeviceUid = kgrDevice?.Uid;
-        _hasKgr = !string.IsNullOrWhiteSpace(_kgrDeviceUid);
+        // uid из exp.json — это “ожидаемое” имя файла, но реальное наличие данных проверяем по файлам результата
+        _kgrDeviceUid = string.IsNullOrWhiteSpace(kgrDevice?.Uid) ? null : kgrDevice!.Uid;
+        _kgrRecordSize = GsrData.Size;
 
-        if (!_hasKgr)
-            TryResolveKgrDeviceUid(_stimuli.FirstOrDefault()?.Uid);
+        // Важно: наличие устройства в exp.json ≠ наличие данных в результате
+        _hasKgr = false;
+
+        // Если результаты/стимулы ещё не загружены — просто останемся в _hasKgr=false.
+        TryResolveKgrDeviceUid(_stimuli.FirstOrDefault()?.Uid);
 
         ApplyKgrPanelVisibility();
     }
@@ -165,48 +176,214 @@ public partial class AnalysisWindow : Window
 
     private bool TryResolveKgrDeviceUid(string? stimUid)
     {
-        if (!string.IsNullOrWhiteSpace(_kgrDeviceUid))
-        {
-            _hasKgr = true;
-            return true;
-        }
-
-        var kgrDevice = _exp?.Devices
-            .FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(kgrDevice?.Uid))
-        {
-            _kgrDeviceUid = kgrDevice!.Uid;
-            _hasKgr = true;
-            return true;
-        }
-
         var targetStim = string.IsNullOrWhiteSpace(stimUid) ? _stimuli.FirstOrDefault()?.Uid : stimUid;
         if (string.IsNullOrWhiteSpace(targetStim))
+        {
+            _hasKgr = false;
             return false;
+        }
 
         IEnumerable<ResultDisplayItem> resultsToScan = EnumerateVisibleResults().ToList();
         if (!resultsToScan.Any())
             resultsToScan = _resultsDisplay;
 
-        foreach (var result in resultsToScan)
+        // 0) Если _kgrDeviceUid уже задан — это НЕ значит, что файл есть.
+        // Проверяем, что в каком-то результате реально существует и похож на GSR.
+        if (!string.IsNullOrWhiteSpace(_kgrDeviceUid))
         {
-            var stimDir = Path.Combine(_expDir, "results", result.ResultUid, targetStim);
+            foreach (var r in resultsToScan)
+            {
+                var candidate = Path.Combine(_expDir, "results", r.ResultUid, targetStim, _kgrDeviceUid);
+                if (!File.Exists(candidate)) continue;
+
+                if (TryDetectGsrRecordSize(candidate, out var rs))
+                {
+                    _kgrRecordSize = rs;
+                    _hasKgr = true;
+                    return true;
+                }
+            }
+        }
+
+        // 1) Попробуем “ожидаемый” UID из exp.json: точное имя + варианты с расширением (старые результаты).
+        var expectedUid = _exp?.Devices
+            .FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase))?.Uid;
+
+        if (!string.IsNullOrWhiteSpace(expectedUid))
+        {
+            foreach (var r in resultsToScan)
+            {
+                var stimDir = Path.Combine(_expDir, "results", r.ResultUid, targetStim);
+                if (!Directory.Exists(stimDir)) continue;
+
+                // точное совпадение имени (как в текущей записи)
+                var exact = Path.Combine(stimDir, expectedUid);
+                if (File.Exists(exact) && TryDetectGsrRecordSize(exact, out var rsExact))
+                {
+                    _kgrDeviceUid = expectedUid;
+                    _kgrRecordSize = rsExact;
+                    _hasKgr = true;
+                    return true;
+                }
+
+                // старые варианты: UID + любое расширение (uid.dat / uid.bin и т.п.)
+                foreach (var file in Directory.EnumerateFiles(stimDir, expectedUid + ".*"))
+                {
+                    if (TryDetectGsrRecordSize(file, out var rs))
+                    {
+                        _kgrDeviceUid = Path.GetFileName(file);
+                        _kgrRecordSize = rs;
+                        _hasKgr = true;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // 2) Фолбэк: сканируем файлы стимула и выбираем тот, который “похож на поток GSR”.
+        foreach (var r in resultsToScan)
+        {
+            var stimDir = Path.Combine(_expDir, "results", r.ResultUid, targetStim);
             if (!Directory.Exists(stimDir)) continue;
 
             foreach (var file in Directory.EnumerateFiles(stimDir))
             {
-                var info = new FileInfo(file);
-                if (info.Length < GsrData.Size) continue;
-                if (info.Length % GsrData.Size != 0) continue;
-
-                _kgrDeviceUid = Path.GetFileName(file);
-                _hasKgr = true;
-                return true;
+                if (TryDetectGsrRecordSize(file, out var rs))
+                {
+                    _kgrDeviceUid = Path.GetFileName(file);
+                    _kgrRecordSize = rs;
+                    _hasKgr = true;
+                    return true;
+                }
             }
+        }
+
+        _hasKgr = false;
+        return false;
+    }
+
+    private static IEnumerable<int> EnumeratePossibleGsrRecordSizes(long len)
+    {
+        if (len >= GsrData.Size && (len % GsrData.Size) == 0) yield return GsrData.Size;
+        if (len >= PackedGsrRecordSize && (len % PackedGsrRecordSize) == 0) yield return PackedGsrRecordSize;
+        if (len >= WireGsrRecordSize && (len % WireGsrRecordSize) == 0) yield return WireGsrRecordSize;
+    }
+
+    private static bool TryDetectGsrRecordSize(string filePath, out int recordSize)
+    {
+        recordSize = 0;
+
+        try
+        {
+            var info = new FileInfo(filePath);
+            if (!info.Exists) return false;
+
+            var len = info.Length;
+            if (len < WireGsrRecordSize) return false;
+
+            foreach (var rs in EnumeratePossibleGsrRecordSizes(len))
+            {
+                if (ProbeGsrFile(filePath, rs))
+                {
+                    recordSize = rs;
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            // ignore IO errors
         }
 
         return false;
     }
+
+    private static bool ProbeGsrFile(string filePath, int recordSize)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (fs.Length < recordSize) return false;
+
+            var buf = new byte[recordSize];
+
+            // 1-я запись
+            if (fs.Read(buf, 0, recordSize) != recordSize) return false;
+            if (!TryReadWireFields(buf, out var t1, out var hr1, out var sr1, out var sc1, out var range1, out var ppg1))
+                return false;
+            if (!IsPlausibleWireSample(t1, hr1, sr1, sc1, range1, ppg1))
+                return false;
+
+            // 2-я запись (если есть) — проверяем монотонность времени
+            if (fs.Length >= recordSize * 2)
+            {
+                if (fs.Read(buf, 0, recordSize) != recordSize) return false;
+                if (!TryReadWireFields(buf, out var t2, out var hr2, out var sr2, out var sc2, out var range2, out var ppg2))
+                    return false;
+                if (!IsPlausibleWireSample(t2, hr2, sr2, sc2, range2, ppg2))
+                    return false;
+
+                if (!(t2 > t1)) return false;
+                var dt = t2 - t1;
+                if (!double.IsFinite(dt) || dt <= 0 || dt > 60) return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryReadWireFields(
+        byte[] rec,
+        out double time,
+        out double hr,
+        out double sr,
+        out double sc,
+        out double range,
+        out double ppg)
+    {
+        time = hr = sr = sc = range = ppg = double.NaN;
+
+        if (rec.Length < WireGsrRecordSize) return false;
+
+        ReadOnlySpan<byte> b = rec;
+
+        time = ReadD(b, 0);
+        hr = ReadD(b, 8);
+        sr = ReadD(b, 16);
+        sc = ReadD(b, 24);
+        range = ReadD(b, 32);
+        ppg = ReadD(b, 40);
+
+        return double.IsFinite(time) &&
+               double.IsFinite(hr) &&
+               double.IsFinite(sr) &&
+               double.IsFinite(sc) &&
+               double.IsFinite(range) &&
+               double.IsFinite(ppg);
+
+        static double ReadD(ReadOnlySpan<byte> bb, int off) =>
+            BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(bb.Slice(off, 8)));
+    }
+
+    private static bool IsPlausibleWireSample(double time, double hr, double sr, double sc, double range, double ppg)
+    {
+        // time — секунды (обычно монотонные), hr — 0..300
+        if (!double.IsFinite(time) || time <= 0 || Math.Abs(time) > 1e12) return false;
+        if (!double.IsFinite(hr) || hr < 0 || hr > 300) return false;
+
+        // Остальные поля сильно не зажимаем, но отсечём явный мусор
+        if (!double.IsFinite(sr) || Math.Abs(sr) > 1e9) return false;
+        if (!double.IsFinite(sc) || Math.Abs(sc) > 1e9) return false;
+        if (!double.IsFinite(range) || Math.Abs(range) > 1e6) return false;
+        if (!double.IsFinite(ppg) || Math.Abs(ppg) > 1e9) return false;
+
+        return true;
+    }
+
 
     // Добавьте этот метод в AnalysisWindow.xaml.cs (например, рядом с BuildHeatmapSamples)
     private void AoiType_Rect_Checked(object sender, RoutedEventArgs e) => _currentAoiType = AoiType.Rectangle;
@@ -300,7 +477,8 @@ public partial class AnalysisWindow : Window
     }
     private string RawCacheKey(string resultUid, string stimUid) => K(resultUid, stimUid, _detectSettings.Eye);
 
-    private string GsrCacheKey(string resultUid, string stimUid) => KG(resultUid, stimUid);
+    private string GsrCacheKey(string resultUid, string stimUid) =>
+        $"{KG(resultUid, stimUid)}|{_kgrDeviceUid ?? ""}|{_kgrRecordSize}";
 
     private List<GsrSample> GetGsrSamplesForStim(string resultUid, string stimUid)
     {
@@ -308,60 +486,124 @@ public partial class AnalysisWindow : Window
         if (_gsrCache.TryGetValue(key, out var cached)) return cached;
 
         var list = ReadGsrSamplesForStim(resultUid, stimUid);
-        _gsrCache[key] = list;
+
+        // Во время чтения могли уточниться _kgrDeviceUid/_kgrRecordSize => кладём по актуальному ключу.
+        var keyAfter = GsrCacheKey(resultUid, stimUid);
+        _gsrCache[keyAfter] = list;
+
         return list;
     }
 
+
     private List<GsrSample> ReadGsrSamplesForStim(string resultUid, string stimUid)
     {
-        if (string.IsNullOrWhiteSpace(_kgrDeviceUid))
+        var stimDir = Path.Combine(_expDir, "results", resultUid, stimUid);
+        if (!Directory.Exists(stimDir)) return new();
+
+        string? filePath = null;
+        int recordSize = 0;
+
+        // 0) Пробуем текущее имя файла
+        if (!string.IsNullOrWhiteSpace(_kgrDeviceUid))
         {
-            if (!TryResolveKgrDeviceUid(stimUid)) return new();
+            var p = Path.Combine(stimDir, _kgrDeviceUid);
+            if (File.Exists(p) && TryDetectGsrRecordSize(p, out recordSize))
+                filePath = p;
         }
 
-        var path = Path.Combine(_expDir, "results", resultUid, stimUid, _kgrDeviceUid);
-        if (!File.Exists(path))
+        // 1) Если не нашли — попробуем общий резолв для этого стимула (может обновить _kgrDeviceUid)
+        if (filePath == null)
         {
-            if (!TryResolveKgrDeviceUid(stimUid)) return new();
-            path = Path.Combine(_expDir, "results", resultUid, stimUid, _kgrDeviceUid);
-            if (!File.Exists(path)) return new();
+            TryResolveKgrDeviceUid(stimUid);
+
+            if (!string.IsNullOrWhiteSpace(_kgrDeviceUid))
+            {
+                var p = Path.Combine(stimDir, _kgrDeviceUid);
+                if (File.Exists(p) && TryDetectGsrRecordSize(p, out recordSize))
+                    filePath = p;
+            }
         }
+
+        // 2) UID из exp.json (точное имя + uid.*)
+        if (filePath == null)
+        {
+            var expectedUid = _exp?.Devices
+                .FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase))?.Uid;
+
+            if (!string.IsNullOrWhiteSpace(expectedUid))
+            {
+                var exact = Path.Combine(stimDir, expectedUid);
+                if (File.Exists(exact) && TryDetectGsrRecordSize(exact, out recordSize))
+                {
+                    filePath = exact;
+                    _kgrDeviceUid = expectedUid;
+                }
+                else
+                {
+                    foreach (var file in Directory.EnumerateFiles(stimDir, expectedUid + ".*"))
+                    {
+                        if (TryDetectGsrRecordSize(file, out recordSize))
+                        {
+                            filePath = file;
+                            _kgrDeviceUid = Path.GetFileName(file);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3) Последний шанс — скан всех файлов стимула в этом результате
+        if (filePath == null)
+        {
+            foreach (var file in Directory.EnumerateFiles(stimDir))
+            {
+                if (TryDetectGsrRecordSize(file, out recordSize))
+                {
+                    filePath = file;
+                    _kgrDeviceUid = Path.GetFileName(file);
+                    break;
+                }
+            }
+        }
+
+        if (filePath == null || recordSize < WireGsrRecordSize)
+            return new();
+
+        _kgrRecordSize = recordSize;
+        _hasKgr = true;
 
         var list = new List<GsrSample>(2048);
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        Span<byte> buf = stackalloc byte[GsrData.Size];
+        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16, useAsync: false);
+
+        var buf = new byte[recordSize];
 
         double t0 = double.NaN;
         double prevT = double.NegativeInfinity;
 
         while (true)
         {
-            int n = fs.Read(buf);
+            int n = fs.Read(buf, 0, recordSize);
             if (n == 0) break;
-            if (n != GsrData.Size) break;
+            if (n != recordSize) break;
 
-            double t = ReadD(buf, 0);
-            if (!double.IsFinite(t)) continue;
+            if (!TryReadWireFields(buf, out var t, out var hr, out var sr, out var sc, out _, out var ppg))
+                continue;
+
             if (t <= prevT) continue;
             prevT = t;
 
             if (double.IsNaN(t0)) t0 = t;
+
             double timeSec = t - t0;
             if (!double.IsFinite(timeSec) || timeSec < 0) continue;
-
-            double hr = ReadD(buf, 8);
-            double sr = ReadD(buf, 16);
-            double sc = ReadD(buf, 24);
-            double ppg = ReadD(buf, 40);
 
             list.Add(new GsrSample(timeSec, sr, sc, hr, ppg));
         }
 
         return list;
-
-        static double ReadD(Span<byte> b, int off) =>
-            BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(b.Slice(off, 8)));
     }
+
 
     private void UpdateKgrChartsForStim(string stimUid)
     {

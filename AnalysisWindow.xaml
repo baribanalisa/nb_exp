@@ -760,7 +760,7 @@
             </Grid> <!-- Закрываем внутренний Grid -->
         </Border> <!-- Закрываем Border -->
 
-        <!-- RIGHT: KGR charts -->
+                <!-- RIGHT: KGR charts -->
         <Border x:Name="KgrChartsPanel"
                 Grid.Column="4"
                 Grid.RowSpan="2"
@@ -770,25 +770,38 @@
                 Background="White"
                 Padding="14"
                 Visibility="Collapsed">
-            <StackPanel>
-                <TextBlock Text="Сигналы КГР по стимулу" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                <Grid>
+            <!-- ВАЖНО: StackPanel не "растягивает" контент по высоте,
+                 из-за этого Grid со '*' строками может получить почти нулевую высоту.
+                 Делаем Grid с Auto+* чтобы графики гарантированно получили место. -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Text="Сигналы КГР по стимулу"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,10"/>
+
+                <Grid Grid.Row="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
 
-                    <controls:MetricChart x:Name="KgrSrChart" Grid.Row="0" Grid.Column="0" Margin="0,0,6,6"/>
-                    <controls:MetricChart x:Name="KgrScChart" Grid.Row="0" Grid.Column="1" Margin="6,0,0,6"/>
-                    <controls:MetricChart x:Name="KgrHrChart" Grid.Row="1" Grid.Column="0" Margin="0,6,6,0"/>
-                    <controls:MetricChart x:Name="KgrPpgChart" Grid.Row="1" Grid.Column="1" Margin="6,6,0,0"/>
+                    <controls:MetricChart x:Name="KgrSrChart" Grid.Row="0" Margin="0,0,0,10"/>
+                    <controls:MetricChart x:Name="KgrScChart" Grid.Row="1" Margin="0,0,0,10"/>
+                    <controls:MetricChart x:Name="KgrHrChart" Grid.Row="2" Margin="0,0,0,10"/>
+                    <controls:MetricChart x:Name="KgrPpgChart" Grid.Row="3"/>
                 </Grid>
-            </StackPanel>
+
+            </Grid>
         </Border>
+
 
     </Grid>
 </Window>
