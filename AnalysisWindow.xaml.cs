@@ -68,6 +68,10 @@ public partial class AnalysisWindow : Window
     private readonly Dictionary<string, List<Fixation>> _fixCache = new();
     private readonly Dictionary<string, double> _stimDurationCache = new();
     private readonly Dictionary<string, StimulusVizSettings> _vizCache = new();
+    private readonly Dictionary<string, List<GsrSample>> _gsrCache = new();
+    private string? _kgrDeviceUid;
+    private bool _hasKgr;
+
     
     private readonly Dictionary<string, List<GsrSample>> _gsrCache = new();
     private string? _kgrDeviceUid;
@@ -100,6 +104,7 @@ public partial class AnalysisWindow : Window
     private LibVLCSharp.Shared.Media? _currentMedia;
     private static string K(string resultUid, string stimUid, EyeSelection eye) => $"{resultUid}|{stimUid}|{eye}";
     private static string KF(string resultUid, string stimUid) => $"{resultUid}|{stimUid}";
+    private static string KG(string resultUid, string stimUid) => $"{resultUid}|{stimUid}|kgr";
     
     private static string KG(string resultUid, string stimUid) => $"{resultUid}|{stimUid}|kgr";
 
@@ -266,6 +271,7 @@ public partial class AnalysisWindow : Window
         LoadStimuli();
          InitKgrPanel();
         LoadResultsDisplay();
+        InitKgrPanel();
         // В Window_Loaded
         UpdateAoiColorBtnPreview();
         StimuliList.ItemsSource = _stimuli;
@@ -308,10 +314,18 @@ public partial class AnalysisWindow : Window
 
     private List<GsrSample> ReadGsrSamplesForStim(string resultUid, string stimUid)
     {
-        if (string.IsNullOrWhiteSpace(_kgrDeviceUid)) return new();
+        if (string.IsNullOrWhiteSpace(_kgrDeviceUid))
+        {
+            if (!TryResolveKgrDeviceUid(stimUid)) return new();
+        }
 
         var path = Path.Combine(_expDir, "results", resultUid, stimUid, _kgrDeviceUid);
-        if (!File.Exists(path)) return new();
+        if (!File.Exists(path))
+        {
+            if (!TryResolveKgrDeviceUid(stimUid)) return new();
+            path = Path.Combine(_expDir, "results", resultUid, stimUid, _kgrDeviceUid);
+            if (!File.Exists(path)) return new();
+        }
 
         var list = new List<GsrSample>(2048);
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -1260,6 +1274,7 @@ public partial class AnalysisWindow : Window
 
         _currentStimUid = st.Uid;
         _currentVizSettings = LoadStimulusVisualizationSettings(st.Uid);
+        UpdateKgrChartsForStim(st.Uid);
 
         // === ИСПРАВЛЕНИЕ: Восстанавливаем вкладку (чтобы не сбрасывалась на "Пути") ===
         _currentVizSettings.Mode = currentTabMode;
@@ -1270,7 +1285,8 @@ public partial class AnalysisWindow : Window
 
         // Очищаем кэш пчел при смене стимула
         _cachedBeeSeries = null; 
-
+        if (!string.IsNullOrWhiteSpace(_currentStimUid))
+            UpdateKgrChartsForStim(_currentStimUid);
         // сброс фиксаций на обоих оверлеях
         ClearVisualizationOverlays();
 
@@ -4091,3 +4107,4 @@ public partial class AnalysisWindow : Window
         return duration;
     }
 }
+
