@@ -47,10 +47,15 @@
                 BorderBrush="#CCCCCC" BorderThickness="1" 
                 CornerRadius="6" Padding="12" Margin="0,0,0,10"
                 Visibility="Collapsed">
-            <StackPanel>
-                <TextBlock Text="Сигналы Shimmer в реальном времени" FontWeight="Bold" Margin="0,0,0,8"/>
-                
+                        <StackPanel>
+                <TextBlock Text="Сигналы Shimmer в реальном времени" FontWeight="Bold" Margin="0,0,0,6"/>
+
+                <TextBlock x:Name="ShimmerBatteryText"
+                           Text="Батарея Shimmer: —"
+                           Margin="0,0,0,10"/>
+
                 <Grid>
+
                     <Grid.RowDefinitions>
                         <RowDefinition Height="140"/>
                         <RowDefinition Height="140"/>

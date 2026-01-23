@@ -12,7 +12,15 @@ using System.Buffers.Binary;
 
 namespace NeuroBureau.Experiment;
 
-public readonly record struct ShimmerDataPoint(double Time, double HeartRate, double SkinResistance, double SkinConductance, double Range, double Ppg);
+public readonly record struct ShimmerDataPoint(
+    double Time,
+    double HeartRate,
+    double SkinResistance,
+    double SkinConductance,
+    double Range,
+    double Ppg,
+    int BatteryPercent // 0..100, -1 = неизвестно
+);
 
 public sealed class ShimmerGsrClient : IAsyncDisposable
 {
@@ -33,8 +41,12 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
     private bool _streamingStarted;
     private bool _processStarted;
     private int _stopping; // защита от двойного StopAsync
-    
+
+    // Shimmer: последнее известное значение батареи (0..100), -1 = неизвестно
+    private int _lastBatteryPercent = -1;
+
     public event Action<ShimmerDataPoint>? DataReceived;
+
     
     // legacy ABI размер записи GSRData на Win x64 (double*6 + byte + reserved[32] + padding до 8)
 
@@ -63,7 +75,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         return printable >= (int)(n * 0.90);
     }
 
-    private void LogUdpPacket(byte[] b)
+        private void LogUdpPacket(byte[] b)
     {
         lock (_udpLogLock)
         {
@@ -80,7 +92,289 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         }
     }
 
+    private void UpdateLastBatteryPercent(int batteryPercent)
+    {
+        if (batteryPercent < 0 || batteryPercent > 100) return;
+        Volatile.Write(ref _lastBatteryPercent, batteryPercent);
+    }
+
+    private int GetLastBatteryPercent() => Volatile.Read(ref _lastBatteryPercent);
+
+    private static byte BatteryPercentToLegacyByte(int batteryPercent)
+        => (batteryPercent >= 0 && batteryPercent <= 100) ? (byte)batteryPercent : (byte)0;
+
+    private static int BatteryVoltageToPercent(double voltage)
+    {
+        // грубая линейная аппроксимация Li-Ion (окно 3.3..4.2В)
+        const double vMin = 3.3;
+        const double vMax = 4.2;
+
+        double x = (voltage - vMin) / (vMax - vMin);
+        if (x < 0) x = 0;
+        if (x > 1) x = 1;
+
+        return (int)Math.Round(x * 100.0);
+    }
+
+    private static int NormalizeBatteryToPercent(double raw)
+    {
+        if (double.IsNaN(raw) || double.IsInfinity(raw)) return -1;
+
+        // доля 0..1
+        if (raw >= 0.0 && raw <= 1.0)
+            return (int)Math.Round(raw * 100.0);
+
+        // уже проценты 0..100
+        if (raw >= 0.0 && raw <= 100.0)
+            return (int)Math.Round(raw);
+
+        // 8-bit шкала 0..255
+        if (raw >= 0.0 && raw <= 255.0)
+            return (int)Math.Round(raw / 255.0 * 100.0);
+
+        // напряжение в вольтах (типичный диапазон Li-Ion)
+        if (raw >= 2.8 && raw <= 4.5)
+            return BatteryVoltageToPercent(raw);
+
+        return -1;
+    }
+
+    private static bool TryConvertJsonNumber(JsonElement el, out double value)
+    {
+        value = double.NaN;
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.Number:
+                return el.TryGetDouble(out value);
+
+            case JsonValueKind.String:
+            {
+                var s = el.GetString();
+                return s != null && double.TryParse(
+                    s,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out value);
+            }
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryGetBatteryValue(JsonElement root, out double raw)
+    {
+        raw = double.NaN;
+
+        string[] keys =
+        {
+            "battery", "batt", "bat",
+            "batteryPercent", "battery_percent", "batteryPct", "battery_pct",
+            "batteryVoltage", "battery_voltage",
+            "vbatt", "vbat"
+        };
+
+        foreach (var key in keys)
+        {
+            if (root.TryGetProperty(key, out var prop))
+            {
+                if (TryConvertJsonNumber(prop, out raw))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryExtractNumberAfterIndex(string s, int startIndex, out double value)
+    {
+        value = double.NaN;
+
+        if (string.IsNullOrEmpty(s))
+            return false;
+
+        if (startIndex < 0) startIndex = 0;
+        if (startIndex >= s.Length) startIndex = 0;
+
+        int i = startIndex;
+        while (i < s.Length && !(char.IsDigit(s[i]) || s[i] == '-' || s[i] == '+' || s[i] == '.'))
+            i++;
+
+        if (i >= s.Length)
+            return false;
+
+        int j = i;
+        while (j < s.Length)
+        {
+            char c = s[j];
+            if (char.IsDigit(c) || c == '-' || c == '+' || c == '.' || c == ',' || c == 'e' || c == 'E')
+                j++;
+            else
+                break;
+        }
+
+        var numStr = s.Substring(i, j - i).Trim();
+        numStr = numStr.TrimEnd('%').Replace(',', '.');
+
+        return double.TryParse(
+            numStr,
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out value);
+    }
+
+    private static bool TryParseBatteryPercentFromText(byte[] buf, out int batteryPercent)
+    {
+        batteryPercent = -1;
+        if (buf.Length == 0) return false;
+
+        string s;
+        try { s = Encoding.UTF8.GetString(buf).Trim(); }
+        catch { s = Encoding.ASCII.GetString(buf).Trim(); }
+
+        if (string.IsNullOrWhiteSpace(s))
+            return false;
+
+        // JSON: {"battery":90} / {"batteryVoltage":3.9} / ...
+        if (s.Length >= 2 && s[0] == '{' && s[^1] == '}')
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(s);
+                var root = doc.RootElement;
+
+                if (TryGetBatteryValue(root, out var rawJson))
+                {
+                    int pct = NormalizeBatteryToPercent(rawJson);
+                    if (pct >= 0 && pct <= 100)
+                    {
+                        batteryPercent = pct;
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // не JSON — пробуем дальше
+            }
+        }
+
+        // Текст/kv: "battery=90", "batt: 90%", "bat 3.9V" и т.п.
+        string lower = s.ToLowerInvariant();
+        int idx = lower.IndexOf("battery", StringComparison.Ordinal);
+        if (idx < 0) idx = lower.IndexOf("batt", StringComparison.Ordinal);
+        if (idx < 0) idx = lower.IndexOf("bat", StringComparison.Ordinal);
+        if (idx < 0) idx = 0;
+
+        if (TryExtractNumberAfterIndex(s, idx, out var rawText))
+        {
+            int pct = NormalizeBatteryToPercent(rawText);
+            if (pct >= 0 && pct <= 100)
+            {
+                batteryPercent = pct;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Ищет battery в любом месте JSON (включая вложенные объекты/массивы).
+    /// Возвращает проценты 0..100.
+    /// </summary>
+    private static bool TryFindBatteryPercentRecursive(JsonElement el, out int batteryPercent)
+    {
+        batteryPercent = -1;
+
+        static bool IsBatteryKey(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            var k = name.Trim().ToLowerInvariant();
+
+            return k is "battery" or "batt" or "bat"
+                or "batterypercent" or "battery_percent" or "batterypct" or "battery_pct"
+                or "batteryvoltage" or "battery_voltage"
+                or "vbatt" or "vbat";
+        }
+
+        static bool TryParseBatteryFromObject(JsonElement obj, out int pct)
+        {
+            pct = -1;
+            if (obj.ValueKind != JsonValueKind.Object) return false;
+
+            foreach (var prop in obj.EnumerateObject())
+            {
+                if (!IsBatteryKey(prop.Name))
+                    continue;
+
+                // Число или строка-число
+                if (TryConvertJsonNumber(prop.Value, out var raw))
+                {
+                    int p = NormalizeBatteryToPercent(raw);
+                    if (p >= 0 && p <= 100)
+                    {
+                        pct = p;
+                        return true;
+                    }
+                }
+
+                // Строка может быть вида "3.9V" / "90%" — попробуем вытащить число
+                if (prop.Value.ValueKind == JsonValueKind.String)
+                {
+                    var s = prop.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(s) && TryExtractNumberAfterIndex(s!, 0, out var raw2))
+                    {
+                        int p = NormalizeBatteryToPercent(raw2);
+                        if (p >= 0 && p <= 100)
+                        {
+                            pct = p;
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        if (TryParseBatteryFromObject(el, out var direct))
+        {
+            batteryPercent = direct;
+            return true;
+        }
+
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var p in el.EnumerateObject())
+                {
+                    if (TryFindBatteryPercentRecursive(p.Value, out var found))
+                    {
+                        batteryPercent = found;
+                        return true;
+                    }
+                }
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in el.EnumerateArray())
+                {
+                    if (TryFindBatteryPercentRecursive(item, out var found))
+                    {
+                        batteryPercent = found;
+                        return true;
+                    }
+                }
+                break;
+        }
+
+        return false;
+    }
+
     private const int LegacyGsrRecordSize = 88; // как ждёт анализатор (старый формат)
+
+
     private const int WireGsrRecordSize   = 48; // то, что сейчас реально приходит по UDP (6 double)
 
     private void WriteGsrDatagram(byte[] buf)
@@ -105,18 +399,48 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
                 }
             }
 
-            // 1) Уже legacy-формат (88*N)
+            // 1) Уже legacy-формат (88*N): пишем как есть, плюс извлекаем батарею/данные
             if (buf.Length % LegacyGsrRecordSize == 0)
             {
                 if (s != null)
                 {
                     s.Write(buf, 0, buf.Length);
                 }
+
+                int n = buf.Length / LegacyGsrRecordSize;
+                for (int i = 0; i < n; i++)
+                {
+                    RaiseDataReceivedEventLegacy(buf, i * LegacyGsrRecordSize, LegacyGsrRecordSize);
+                }
+
                 Log("write_legacy");
                 return;
             }
 
-            // 2) Текущий wire-формат (48*N) -> упаковываем в 88
+            // 1.1) Иногда отправитель шлёт "плотно" без паддинга (81*N)
+            if (buf.Length % PackedGsrRecordSize == 0)
+            {
+                int n = buf.Length / PackedGsrRecordSize;
+
+                for (int i = 0; i < n; i++)
+                {
+                    int off = i * PackedGsrRecordSize;
+
+                    if (s != null)
+                    {
+                        s.Write(buf, off, PackedGsrRecordSize);
+                        if (Pad7.Length > 0)
+                            s.Write(Pad7, 0, Pad7.Length);
+                    }
+
+                    RaiseDataReceivedEventLegacy(buf, off, PackedGsrRecordSize);
+                }
+
+                Log($"pad81_to_88_x{n}");
+                return;
+            }
+
+            // 2) Текущий wire-формат (48*N) -> упаковываем в 88 (и дописываем батарею, если удалось узнать)
             if (buf.Length % WireGsrRecordSize == 0)
             {
                 int n = buf.Length / WireGsrRecordSize;
@@ -127,14 +451,13 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
                     Array.Clear(rec, 0, rec.Length);
                     Buffer.BlockCopy(buf, i * WireGsrRecordSize, rec, 0, WireGsrRecordSize);
 
-                    // rec[48] = 0; // battery (необязательно)
-                    // остальное нули = reserved + паддинг
+                    rec[48] = BatteryPercentToLegacyByte(GetLastBatteryPercent()); // battery (0..100) или 0 если неизвестно
 
                     if (s != null)
                     {
                         s.Write(rec, 0, rec.Length);
                     }
-                    
+
                     // Извлекаем данные для события (из первых 48 байт)
                     RaiseDataReceivedEvent(buf, i * WireGsrRecordSize, WireGsrRecordSize);
                 }
@@ -147,6 +470,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             Log("drop_unexpected_len");
         }
     }
+
 
     private void RaiseDataReceivedEvent(byte[] buf, int offset, int length)
     {
@@ -166,7 +490,8 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             if (!IsFinite(time) || !IsFinite(hr) || !IsFinite(sr) || !IsFinite(sc) || !IsFinite(range) || !IsFinite(ppg))
                 return;
 
-            var dataPoint = new ShimmerDataPoint(time, hr, sr, sc, range, ppg);
+            int batteryPercent = GetLastBatteryPercent();
+            var dataPoint = new ShimmerDataPoint(time, hr, sr, sc, range, ppg, batteryPercent);
             DataReceived?.Invoke(dataPoint);
         }
         catch
@@ -174,6 +499,45 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             // Игнорируем ошибки в обработчиках событий
         }
     }
+
+    private void RaiseDataReceivedEventLegacy(byte[] buf, int offset, int length)
+    {
+        try
+        {
+            // должны быть 6 double (48) + byte батареи (минимум 49)
+            if (length < (WireGsrRecordSize + 1)) return;
+
+            // батарея: байт в позиции 48 (после 6 double)
+            int raw = buf[offset + WireGsrRecordSize];
+            int pct = NormalizeBatteryToPercent(raw);
+            if (pct >= 0 && pct <= 100)
+                UpdateLastBatteryPercent(pct);
+
+            if (DataReceived == null) return;
+
+            ReadOnlySpan<byte> b = new ReadOnlySpan<byte>(buf, offset, WireGsrRecordSize);
+
+            double time = ReadF64LE(b, 0);
+            double hr = ReadF64LE(b, 8);
+            double sr = ReadF64LE(b, 16);
+            double sc = ReadF64LE(b, 24);
+            double range = ReadF64LE(b, 32);
+            double ppg = ReadF64LE(b, 40);
+
+            if (!IsFinite(time) || !IsFinite(hr) || !IsFinite(sr) || !IsFinite(sc) || !IsFinite(range) || !IsFinite(ppg))
+                return;
+
+            int batteryPercent = (pct >= 0 && pct <= 100) ? pct : GetLastBatteryPercent();
+            var dataPoint = new ShimmerDataPoint(time, hr, sr, sc, range, ppg, batteryPercent);
+            DataReceived?.Invoke(dataPoint);
+        }
+        catch
+        {
+            // Игнорируем ошибки в обработчиках событий
+        }
+    }
+
+
 
 
 
@@ -219,17 +583,43 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         StartUdpLoop();
         StartProgram();
 
-        await WaitPortOpenAsync(ct);
-        
-        await PostExpectOkAsync("params", _measParamsJson, ct);
-        await Task.Delay(500, ct);
-        await PostExpectOkAsync("connect", JsonSerializer.Serialize(new { name = _btName }), ct);
-        await Task.Delay(3000, ct);
-        await PostExpectOkAsync("start", JsonSerializer.Serialize(new { dummy = "" }), ct);
+        await WaitPortOpenAsync(ct).ConfigureAwait(false);
+
+        // Best-effort: некоторые сборки Shimmer.exe кладут battery в GET /
+        try
+        {
+            using var resp = await _http.GetAsync("", ct).ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(body))
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(body);
+                        if (TryFindBatteryPercentRecursive(doc.RootElement, out var pct))
+                            UpdateLastBatteryPercent(pct);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        await PostExpectOkAsync("params", _measParamsJson, ct).ConfigureAwait(false);
+        await Task.Delay(500, ct).ConfigureAwait(false);
+        await PostExpectOkAsync("connect", JsonSerializer.Serialize(new { name = _btName }), ct).ConfigureAwait(false);
+        await Task.Delay(3000, ct).ConfigureAwait(false);
+        await PostExpectOkAsync("start", JsonSerializer.Serialize(new { dummy = "" }), ct).ConfigureAwait(false);
 
         _streamingStarted = true;
     }
-
 
 
     public async Task StopAsync()
@@ -246,19 +636,19 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         try
         {
             if (_udpTask != null)
-                await _udpTask.WaitAsync(TimeSpan.FromSeconds(1));
+                await _udpTask.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
         catch { /* ignore */ }
 
         // 2) stop допустим только если start реально был
         if (_streamingStarted)
         {
-            try { await PostExpectOkAsync("stop", JsonSerializer.Serialize(new { dummy = "" }), CancellationToken.None); }
+            try { await PostExpectOkAsync("stop", JsonSerializer.Serialize(new { dummy = "" }), CancellationToken.None).ConfigureAwait(false); }
             catch { }
         }
 
         // 3) kill пробуем всегда (в худшем случае упадёт и мы добьём процесс ниже)
-        try { await PostExpectOkAsync("kill", JsonSerializer.Serialize(new { dummy = "" }), CancellationToken.None); }
+        try { await PostExpectOkAsync("kill", JsonSerializer.Serialize(new { dummy = "" }), CancellationToken.None).ConfigureAwait(false); }
         catch { }
 
         // 4) Гарантированно прибиваем процесс и ждём, чтобы DLL отпустились
@@ -281,9 +671,6 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         _streamingStarted = false;
     }
 
-
-
-
     private void BindUdp()
     {
         _udp?.Dispose();
@@ -291,6 +678,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         // строго loopback
         _udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, _port));
     }
+
     private async Task WaitPortOpenAsync(CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
@@ -303,7 +691,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             {
                 using var tcp = new TcpClient();
                 var connectTask = tcp.ConnectAsync(IPAddress.Loopback, _port);
-                var done = await Task.WhenAny(connectTask, Task.Delay(250, ct));
+                var done = await Task.WhenAny(connectTask, Task.Delay(250, ct)).ConfigureAwait(false);
                 if (done == connectTask && tcp.Connected)
                     return;
             }
@@ -312,7 +700,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
                 // игнор — просто ретрай
             }
 
-            await Task.Delay(200, ct);
+            await Task.Delay(200, ct).ConfigureAwait(false);
         }
 
         throw new InvalidOperationException("Shimmer HTTP port did not open in time.");
@@ -334,18 +722,20 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
                 try
                 {
 #if NET8_0_OR_GREATER
-                    r = await _udp.ReceiveAsync(ct);
+                    r = await _udp.ReceiveAsync(ct).ConfigureAwait(false);
 #else
-                    r = await _udp.ReceiveAsync();
+                    r = await _udp.ReceiveAsync().ConfigureAwait(false);
                     if (ct.IsCancellationRequested) break;
 #endif
                 }
                 catch
                 {
                     if (ct.IsCancellationRequested) break;
-                    await Task.Delay(10, ct).ContinueWith(_ => { });
+
+                    try { await Task.Delay(10, ct).ConfigureAwait(false); } catch { }
                     continue;
                 }
+
                 Debug.WriteLine($"Shimmer UDP len={r.Buffer.Length}");
 
                 // Пишем СЫРЫЕ UDP-байты как есть
@@ -353,13 +743,19 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
                 LogUdpPacket(r.Buffer);
 
                 if (LooksLikeText(r.Buffer))
-                    continue;
+                {
+                    if (TryParseBatteryPercentFromText(r.Buffer, out var pct))
+                        UpdateLastBatteryPercent(pct);
 
-                WriteGsrDatagram(r.Buffer); 
+                    continue;
+                }
+
+                WriteGsrDatagram(r.Buffer);
 
             }
         }, ct);
     }
+
     private const int LegacySize = 88;
 
     private void WriteUdpAsLegacy(byte[] buf)
@@ -418,12 +814,12 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         ReadOnlySpan<byte> b = buf;
         if (b.Length != 48) return false;
 
-        double time  = ReadF64LE(b, 0);
-        double hr    = ReadF64LE(b, 8);
-        double sr    = ReadF64LE(b, 16);
-        double sc    = ReadF64LE(b, 24);
+        double time = ReadF64LE(b, 0);
+        double hr = ReadF64LE(b, 8);
+        double sr = ReadF64LE(b, 16);
+        double sc = ReadF64LE(b, 24);
         double range = ReadF64LE(b, 32);
-        double ppg   = ReadF64LE(b, 40);
+        double ppg = ReadF64LE(b, 40);
 
         // минимальная вменяемость: не NaN/Inf и HR в разумных пределах
         if (!IsFinite(time) || !IsFinite(hr) || !IsFinite(sr) || !IsFinite(sc) || !IsFinite(range) || !IsFinite(ppg))
@@ -446,12 +842,12 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         rec = default;
         if (b.Length != 24) return false;
 
-        double time  = ReadF32LE(b, 0);
-        double hr    = ReadF32LE(b, 4);
-        double sr    = ReadF32LE(b, 8);
-        double sc    = ReadF32LE(b, 12);
+        double time = ReadF32LE(b, 0);
+        double hr = ReadF32LE(b, 4);
+        double sr = ReadF32LE(b, 8);
+        double sc = ReadF32LE(b, 12);
         double range = ReadF32LE(b, 16);
-        double ppg   = ReadF32LE(b, 20);
+        double ppg = ReadF32LE(b, 20);
 
         rec = new Rec(time, hr, sr, sc, range, ppg);
         return true;
@@ -545,9 +941,6 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         }
     }
 
-
-
-
     private async Task WaitHttpAsync(CancellationToken ct)
     {
         // простой ретрай: Shimmer.exe иногда поднимает HTTP не мгновенно
@@ -556,13 +949,13 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             try
             {
-                using var resp = await _http.GetAsync("", ct);
+                using var resp = await _http.GetAsync("", ct).ConfigureAwait(false);
                 // нам не важен код, важен факт, что TCP/HTTP жив
                 return;
             }
             catch
             {
-                await Task.Delay(200, ct);
+                await Task.Delay(200, ct).ConfigureAwait(false);
             }
         }
 
@@ -572,18 +965,35 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
     private async Task PostExpectOkAsync(string service, string jsonBody, CancellationToken ct)
     {
         using var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-        using var resp = await _http.PostAsync(service, content, ct);
+        using var resp = await _http.PostAsync(service, content, ct).ConfigureAwait(false);
 
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"Shimmer HTTP {service}: HTTP {(int)resp.StatusCode}");
 
-        var s = await resp.Content.ReadAsStringAsync(ct);
+        var s = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
         try
         {
             using var doc = JsonDocument.Parse(s);
-            if (!doc.RootElement.TryGetProperty("result", out var r) || r.GetInt32() != 0)
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("result", out var r))
+                throw new InvalidOperationException($"Shimmer HTTP {service}: no result field, body={s}");
+
+            int resultCode;
+            if (r.ValueKind == JsonValueKind.Number && r.TryGetInt32(out var n))
+                resultCode = n;
+            else if (r.ValueKind == JsonValueKind.String && int.TryParse(r.GetString(), out var ns))
+                resultCode = ns;
+            else
+                throw new InvalidOperationException($"Shimmer HTTP {service}: invalid result type, body={s}");
+
+            if (resultCode != 0)
                 throw new InvalidOperationException($"Shimmer HTTP {service}: result != 0, body={s}");
+
+            // Best-effort: батарея может приходить в ответах params/connect/start/...
+            if (TryFindBatteryPercentRecursive(root, out var pct))
+                UpdateLastBatteryPercent(pct);
         }
         catch (JsonException)
         {
@@ -591,9 +1001,10 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         }
     }
 
+
     public async ValueTask DisposeAsync()
     {
-        await StopAsync();
+        await StopAsync().ConfigureAwait(false);
         _http.Dispose();
     }
 }

@@ -797,13 +797,21 @@ public partial class MainWindow : Window
         var t = _activeRunTask;
         if (t != null)
         {
-            try { await t; } catch { }
+            try
+            {
+                // ВАЖНО: не ждём бесконечно, иначе окно никогда не закроется,
+                // а процесс будет держать exe и ломать последующую сборку.
+                await Task.WhenAny(t, Task.Delay(2000));
+            }
+            catch { }
         }
 
         PromptSavePendingResult("Выход из приложения");
 
         _closeAllowed = true;
-        Close();
+
+        // Повторная попытка закрыть окно (теперь MainWindow_Closing пропустит)
+        try { Close(); } catch { }
     }
 
 

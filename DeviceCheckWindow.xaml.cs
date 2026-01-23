@@ -36,14 +36,28 @@ public partial class DeviceCheckWindow : Window
     private readonly List<MetricPoint> _hrData = new();
     private readonly List<MetricPoint> _ppgData = new();
     private double _chartStartTime;
-    private const int MaxChartPoints = 2000; // Увеличено для поддержки большего диапазона
-    private const double ChartWindowSeconds = 60.0; // Увеличено до 60 секунд
+    // было: MaxChartPoints=2000 и ChartWindowSeconds=60
+
+    private int _chartHeadIndex;
+
+    private const int MaxChartPoints = 5000;      // запас на высокую частоту
+    private const double ChartWindowSeconds = 5.0; // окно по времени для графиков
+
+    // Shimmer: батарея (0..100), -1 = неизвестно
+    private int _lastBatteryPercent = -1;
+    private int _lastBatteryDisplayed = -1;
+    private DateTime _lastBatteryUiUpdate = DateTime.MinValue;
 
     // Поля для отслеживания взгляда
+
     private TrackerClient? _trackerClient;
     private double _lastGazeX = 0.5, _lastGazeY = 0.5;
     private DateTime _lastGazeUpdate = DateTime.MinValue;
     private CancellationTokenSource? _gazeMonitorCancellationTokenSource;
+
+    // Закрытие окна: не блокируем UI-поток (иначе возможен дедлок при DisposeAsync)
+    private int _closeCleanupStarted;
+    private bool _allowCloseAfterCleanup;
 
     public DeviceCheckWindow(string expDir, ExperimentFile exp, CancellationToken externalCt)
     {
@@ -60,26 +74,75 @@ public partial class DeviceCheckWindow : Window
 
     private void DeviceCheckWindow_Closing(object? sender, CancelEventArgs e)
     {
-        // если окно закрыли НЕ через "Запустить" — прибиваем то, что успели поднять
+        // если это повторное закрытие после cleanup — пропускаем без препятствий
+        if (_allowCloseAfterCleanup)
+            return;
+
+        // всегда останавливаем мониторинг взгляда при закрытии окна
+        try { _gazeMonitorCancellationTokenSource?.Cancel(); } catch { }
+        try { _gazeMonitorCancellationTokenSource?.Dispose(); } catch { }
+        _gazeMonitorCancellationTokenSource = null;
+
+        // если окно закрыли через "Запустить" — клиентов оставляем наверх, но графики/подписки прибиваем
         if (_keepClients)
         {
+            try { _cts?.Cancel(); } catch { }
             StopShimmerCharts();
             return;
         }
 
-        _cts?.Cancel();
-        StopShimmerCharts();
-        
-        // Останавливаем мониторинг взгляда
-        _gazeMonitorCancellationTokenSource?.Cancel();
-        _gazeMonitorCancellationTokenSource?.Dispose();
+        // иначе: не даём WPF закрыть окно прямо сейчас, делаем cleanup и закрываем повторно
+        e.Cancel = true;
 
-        if (ShimmerClient != null)
+        if (Interlocked.Exchange(ref _closeCleanupStarted, 1) != 0)
+            return;
+
+        IsEnabled = false;
+        _ = CleanupAndCloseAsync();
+    }
+
+    private async Task CleanupAndCloseAsync()
+    {
+        try
         {
-            try { ShimmerClient.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+            try { _cts?.Cancel(); } catch { }
+
+            // UI-часть (отписки/скрытие панелей) — на UI потоке
+            StopShimmerCharts();
+
+            // Shimmer: DisposeAsync может зависнуть/долго ждать — уводим в background + таймаут
+            if (ShimmerClient != null)
+            {
+                var client = ShimmerClient;
+                ShimmerClient = null;
+                ShimmerDevice = null;
+
+                try
+                {
+                    Task disposeTask = Task.Run(async () =>
+                    {
+                        try { await client.DisposeAsync().ConfigureAwait(false); }
+                        catch { /* ignore */ }
+                    });
+
+                    // Не даём закрытию окна зависнуть навсегда
+                    await Task.WhenAny(disposeTask, Task.Delay(2500));
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                _allowCloseAfterCleanup = true;
+                IsEnabled = true;
+                Close(); // вызовет Closing повторно, но уже пропустим
+            }
             catch { /* ignore */ }
-            ShimmerClient = null;
-            ShimmerDevice = null;
         }
     }
 
@@ -354,24 +417,27 @@ public partial class DeviceCheckWindow : Window
             _hrData.Clear();
             _ppgData.Clear();
             _chartStartTime = 0;
+            _chartHeadIndex = 0;
+            _lastBatteryPercent = -1;
         }
+
+        _lastBatteryDisplayed = -1;
+        _lastBatteryUiUpdate = DateTime.MinValue;
 
         ShimmerClient.DataReceived += OnShimmerDataReceived;
 
         Dispatcher.Invoke(() =>
         {
             ShimmerChartsPanel.Visibility = Visibility.Visible;
+            ShimmerBatteryText.Text = "Батарея Shimmer: —";
             SrChart.Clear("Ожидание данных...");
             ScChart.Clear("Ожидание данных...");
             HrChart.Clear("Ожидание данных...");
             PpgChart.Clear("Ожидание данных...");
-            
-            // Инициализируем превью взгляда - УДАЛЕНО
-            //GazeStatus.Text = "Ожидание данных трекера...";
-            //GazeCoords.Text = "X: -, Y: -";
-            //GazePoint.Visibility = Visibility.Collapsed;
         });
     }
+
+
 
     private void StopShimmerCharts()
     {
@@ -379,96 +445,157 @@ public partial class DeviceCheckWindow : Window
         {
             ShimmerClient.DataReceived -= OnShimmerDataReceived;
         }
-        
+
+        lock (_chartDataLock)
+        {
+            _lastBatteryPercent = -1;
+        }
+
+        _lastBatteryDisplayed = -1;
+        _lastBatteryUiUpdate = DateTime.MinValue;
+
         Dispatcher.Invoke(() =>
         {
+            ShimmerBatteryText.Text = "Батарея Shimmer: —";
             ShimmerChartsPanel.Visibility = Visibility.Collapsed;
         });
     }
+
 
     private void OnShimmerDataReceived(ShimmerDataPoint data)
     {
         lock (_chartDataLock)
         {
             if (_chartStartTime == 0)
-            {
                 _chartStartTime = data.Time;
-            }
 
-            var relativeTime = data.Time - _chartStartTime;
+            var t = data.Time - _chartStartTime; // секунды от старта стрима
 
-            _srData.Add(new MetricPoint(relativeTime, data.SkinResistance));
-            _scData.Add(new MetricPoint(relativeTime, data.SkinConductance));
-            _hrData.Add(new MetricPoint(relativeTime, data.HeartRate));
-            _ppgData.Add(new MetricPoint(relativeTime, data.Ppg));
+            _srData.Add(new MetricPoint(t, data.SkinResistance));
+            _scData.Add(new MetricPoint(t, data.SkinConductance));
+            _hrData.Add(new MetricPoint(t, data.HeartRate));
+            _ppgData.Add(new MetricPoint(t, data.Ppg));
 
-            if (_srData.Count > MaxChartPoints)
+            if (data.BatteryPercent >= 0 && data.BatteryPercent <= 100)
+                _lastBatteryPercent = data.BatteryPercent;
+
+            // 1) держим только последние ChartWindowSeconds по времени
+
+            var cutoff = t - ChartWindowSeconds;
+            while (_chartHeadIndex < _srData.Count && _srData[_chartHeadIndex].TimeSec < cutoff)
+                _chartHeadIndex++;
+
+            // 2) страховка по количеству (чтобы не разрасталось бесконечно)
+            var liveCount = _srData.Count - _chartHeadIndex;
+            if (liveCount > MaxChartPoints)
+                _chartHeadIndex = _srData.Count - MaxChartPoints;
+
+            // 3) иногда уплотняем списки (иначе они будут расти, даже если headIndex двигается)
+            if (_chartHeadIndex > 5000 && _chartHeadIndex > _srData.Count / 2)
             {
-                _srData.RemoveAt(0);
-                _scData.RemoveAt(0);
-                _hrData.RemoveAt(0);
-                _ppgData.RemoveAt(0);
+                _srData.RemoveRange(0, _chartHeadIndex);
+                _scData.RemoveRange(0, _chartHeadIndex);
+                _hrData.RemoveRange(0, _chartHeadIndex);
+                _ppgData.RemoveRange(0, _chartHeadIndex);
+                _chartHeadIndex = 0;
             }
         }
 
-        Dispatcher.InvokeAsync(() => UpdateCharts(), System.Windows.Threading.DispatcherPriority.Background);
+        Dispatcher.InvokeAsync(UpdateCharts, System.Windows.Threading.DispatcherPriority.Background);
     }
 
-    private void UpdateCharts()
+
+        private void UpdateCharts()
     {
         List<MetricPoint> srCopy, scCopy, hrCopy, ppgCopy;
-        double tMin, tMax;
+        double latestTime;
+        int batteryPercent;
 
         lock (_chartDataLock)
         {
-            if (_srData.Count == 0) return;
+            var n = _srData.Count - _chartHeadIndex;
+            if (n <= 0) return;
 
-            srCopy = new List<MetricPoint>(_srData);
-            scCopy = new List<MetricPoint>(_scData);
-            hrCopy = new List<MetricPoint>(_hrData);
-            ppgCopy = new List<MetricPoint>(_ppgData);
+            srCopy = _srData.GetRange(_chartHeadIndex, n);
+            scCopy = _scData.GetRange(_chartHeadIndex, n);
+            hrCopy = _hrData.GetRange(_chartHeadIndex, n);
+            ppgCopy = _ppgData.GetRange(_chartHeadIndex, n);
 
-            var latestTime = _srData[_srData.Count - 1].TimeSec;
-            tMin = Math.Max(0, latestTime - ChartWindowSeconds);
-            tMax = latestTime;
+            latestTime = srCopy[srCopy.Count - 1].TimeSec;
+            batteryPercent = _lastBatteryPercent;
         }
 
-        var srFiltered = srCopy.Where(p => p.TimeSec >= tMin).ToList();
-        var scFiltered = scCopy.Where(p => p.TimeSec >= tMin).ToList();
-        var hrFiltered = hrCopy.Where(p => p.TimeSec >= tMin).ToList();
-        var ppgFiltered = ppgCopy.Where(p => p.TimeSec >= tMin).ToList();
+        var window = Math.Min(ChartWindowSeconds, latestTime);
+        var tMinAbs = latestTime - window;
 
-        if (srFiltered.Count > 0)
+        // Важно: приводим X к диапазону 0..window (скользящее окно)
+        static List<MetricPoint> ToWindow(List<MetricPoint> src, double tMinAbs)
         {
-            var srMin = srFiltered.Min(p => p.Value);
-            var srMax = srFiltered.Max(p => p.Value);
-            var srRange = Math.Max(1.0, srMax - srMin);
-            SrChart.SetData(srFiltered, tMin, tMax, srMin - srRange * 0.1, srMax + srRange * 0.1, double.NaN, "КГР: Сопротивление (SR)", null, "кОм");
+            var res = new List<MetricPoint>(src.Count);
+            for (int i = 0; i < src.Count; i++)
+            {
+                var p = src[i];
+                if (p.TimeSec < tMinAbs) continue;
+                res.Add(new MetricPoint(p.TimeSec - tMinAbs, p.Value)); // X=0..window
+            }
+            return res;
         }
 
-        if (scFiltered.Count > 0)
+        var sr = ToWindow(srCopy, tMinAbs);
+        var sc = ToWindow(scCopy, tMinAbs);
+        var hr = ToWindow(hrCopy, tMinAbs);
+        var ppg = ToWindow(ppgCopy, tMinAbs);
+
+        double xMin = 0;
+        double xMax = window;
+
+        if (sr.Count > 0)
         {
-            var scMin = scFiltered.Min(p => p.Value);
-            var scMax = scFiltered.Max(p => p.Value);
-            var scRange = Math.Max(1.0, scMax - scMin);
-            ScChart.SetData(scFiltered, tMin, tMax, scMin - scRange * 0.1, scMax + scRange * 0.1, double.NaN, "КГР: Проводимость (SC)", null, "мкСм");
+            var min = sr.Min(p => p.Value);
+            var max = sr.Max(p => p.Value);
+            var range = Math.Max(1.0, max - min);
+            SrChart.SetData(sr, xMin, xMax, min - range * 0.1, max + range * 0.1, double.NaN, "КГР: Сопротивление (SR)", null, "кОм");
         }
 
-        if (hrFiltered.Count > 0)
+        if (sc.Count > 0)
         {
-            var hrMin = Math.Max(0, hrFiltered.Min(p => p.Value));
-            var hrMax = Math.Min(200, hrFiltered.Max(p => p.Value));
-            HrChart.SetData(hrFiltered, tMin, tMax, hrMin - 10, hrMax + 10, double.NaN, "Пульс (HR)", null, "уд/мин");
+            var min = sc.Min(p => p.Value);
+            var max = sc.Max(p => p.Value);
+            var range = Math.Max(1.0, max - min);
+            ScChart.SetData(sc, xMin, xMax, min - range * 0.1, max + range * 0.1, double.NaN, "КГР: Проводимость (SC)", null, "мкСм");
         }
 
-        if (ppgFiltered.Count > 0)
+        if (hr.Count > 0)
         {
-            var ppgMin = ppgFiltered.Min(p => p.Value);
-            var ppgMax = ppgFiltered.Max(p => p.Value);
-            var ppgRange = Math.Max(1.0, ppgMax - ppgMin);
-            PpgChart.SetData(ppgFiltered, tMin, tMax, ppgMin - ppgRange * 0.1, ppgMax + ppgRange * 0.1, double.NaN, "Фотоплетизмограмма (PPG)", null, "усл.ед.");
+            var min = Math.Max(0, hr.Min(p => p.Value));
+            var max = Math.Min(200, hr.Max(p => p.Value));
+            HrChart.SetData(hr, xMin, xMax, min - 10, max + 10, double.NaN, "Пульс (HR)", null, "уд/мин");
+        }
+
+        if (ppg.Count > 0)
+        {
+            var min = ppg.Min(p => p.Value);
+            var max = ppg.Max(p => p.Value);
+            var range = Math.Max(1.0, max - min);
+            PpgChart.SetData(ppg, xMin, xMax, min - range * 0.1, max + range * 0.1, double.NaN, "Фотоплетизмограмма (PPG)", null, "усл.ед.");
+        }
+
+        // Батарея: обновляем не чаще, чем раз в 0.5с, чтобы не дергать WPF на каждом пакете
+        var now = DateTime.UtcNow;
+        int normalized = (batteryPercent >= 0 && batteryPercent <= 100) ? batteryPercent : -1;
+
+        if (normalized != _lastBatteryDisplayed || (now - _lastBatteryUiUpdate).TotalMilliseconds >= 500)
+        {
+            ShimmerBatteryText.Text = normalized >= 0
+                ? $"Батарея Shimmer: {normalized}%"
+                : "Батарея Shimmer: —";
+
+            _lastBatteryDisplayed = normalized;
+            _lastBatteryUiUpdate = now;
         }
     }
+
+
     
     private async Task StartGazeMonitoring(CancellationToken ct)
     {
