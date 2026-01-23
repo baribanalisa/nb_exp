@@ -6,7 +6,7 @@
         xmlns:controls="clr-namespace:NeuroBureau.Experiment.Controls"
 
         Title="Анализ"
-        Width="1400" Height="840"
+        Width="1800" Height="840"
         WindowStartupLocation="CenterOwner"
         FontFamily="Segoe UI"
         Loaded="Window_Loaded"
@@ -165,6 +165,8 @@
             <ColumnDefinition Width="500"/>
             <ColumnDefinition Width="14"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition x:Name="KgrSpacerColumn" Width="14"/>
+            <ColumnDefinition x:Name="KgrColumn" Width="360"/>
         </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
@@ -757,6 +759,36 @@
                 
             </Grid> <!-- Закрываем внутренний Grid -->
         </Border> <!-- Закрываем Border -->
+
+        <!-- RIGHT: KGR charts -->
+        <Border x:Name="KgrChartsPanel"
+                Grid.Column="4"
+                Grid.RowSpan="2"
+                CornerRadius="14"
+                BorderThickness="0"
+                BorderBrush="Transparent"
+                Background="White"
+                Padding="14"
+                Visibility="Collapsed">
+            <StackPanel>
+                <TextBlock Text="Сигналы КГР по стимулу" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <controls:MetricChart x:Name="KgrSrChart" Grid.Row="0" Grid.Column="0" Margin="0,0,6,6"/>
+                    <controls:MetricChart x:Name="KgrScChart" Grid.Row="0" Grid.Column="1" Margin="6,0,0,6"/>
+                    <controls:MetricChart x:Name="KgrHrChart" Grid.Row="1" Grid.Column="0" Margin="0,6,6,0"/>
+                    <controls:MetricChart x:Name="KgrPpgChart" Grid.Row="1" Grid.Column="1" Margin="6,6,0,0"/>
+                </Grid>
+            </StackPanel>
+        </Border>
 
     </Grid>
 </Window>
