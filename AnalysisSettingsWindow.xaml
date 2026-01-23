@@ -305,7 +305,7 @@
                     </Border>
                 </TabItem>
 
-                <TabItem Header="Пчелиный рой" Style="{StaticResource TopTabItemStyle}">
+                                <TabItem Header="Пчелиный рой" Style="{StaticResource TopTabItemStyle}">
                     <Border CornerRadius="12" BorderThickness="1" BorderBrush="#E5E7EB" Background="White" Padding="16" Margin="0,10,0,0">
                         <StackPanel>
                             <TextBlock Text="Параметры Bee Swarm" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,15"/>
@@ -333,7 +333,101 @@
                         </StackPanel>
                     </Border>
                 </TabItem>
+
+                <TabItem Header="КГР" Style="{StaticResource TopTabItemStyle}">
+                    <Border CornerRadius="12" BorderThickness="1" BorderBrush="#E5E7EB" Background="White" Padding="16" Margin="0,10,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Фильтрация КГР (Shimmer GSR)" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12"/>
+
+                            <CheckBox x:Name="KgrFilterEnabledCheck"
+                                      Content="Включить фильтрацию (только отображение, raw не меняется)"
+                                      Margin="0,0,0,12"/>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="260"/>
+                                    <ColumnDefinition Width="240"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Медианный фильтр"/>
+                                <CheckBox x:Name="KgrUseMedianCheck" Grid.Row="0" Grid.Column="1" Content="Вкл." VerticalAlignment="Center"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Окно медианы (сек)"/>
+                                <TextBox x:Name="KgrMedianWindowSecBox" Grid.Row="2" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="EMA сглаживание"/>
+                                <CheckBox x:Name="KgrUseEmaCheck" Grid.Row="4" Grid.Column="1" Content="Вкл." VerticalAlignment="Center"/>
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="τ SR (сек)"/>
+                                <TextBox x:Name="KgrSrTauSecBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+
+                                <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="τ SC (сек)"/>
+                                <TextBox x:Name="KgrScTauSecBox" Grid.Row="8" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+
+                                <TextBlock Grid.Row="10" Grid.Column="0" VerticalAlignment="Center" Text="τ HR (сек)"/>
+                                <TextBox x:Name="KgrHrTauSecBox" Grid.Row="10" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+
+                                <TextBlock Grid.Row="12" Grid.Column="0" VerticalAlignment="Center" Text="τ PPG (сек)"/>
+                                <TextBox x:Name="KgrPpgTauSecBox" Grid.Row="12" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+                            </Grid>
+
+                            <Separator Margin="0,0,0,12"/>
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="260"/>
+                                    <ColumnDefinition Width="240"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="8"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" Text="HR: защита от артефактов" Margin="0,0,0,4"/>
+
+                                <CheckBox x:Name="KgrClampHrCheck"
+                                          Grid.Row="2" Grid.ColumnSpan="2"
+                                          Content="Ограничивать HR (диапазон + максимальный скачок)"
+                                          Margin="0,0,0,6"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="HR min / max (bpm)"/>
+                                <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal">
+                                    <TextBox x:Name="KgrHrMinBox" Width="110" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+                                    <TextBlock Text=" / " VerticalAlignment="Center" Margin="6,0"/>
+                                    <TextBox x:Name="KgrHrMaxBox" Width="110" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Макс. скачок (bpm/sec)"/>
+                                <TextBox x:Name="KgrHrMaxDeltaBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
+                            </Grid>
+
+                            <TextBlock Text="* Для SR/SC обычно хорошо: медиана 0.2–0.5 сек, τ 0.8–1.5 сек. Для PPG — τ 0.05–0.2 сек."
+                                       FontSize="12" Foreground="#888" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </TabItem>
             </TabControl>
+
 
             <!-- Buttons: применяем стиль PillButtonStyle -->
             <DockPanel Grid.Row="2" LastChildFill="False">

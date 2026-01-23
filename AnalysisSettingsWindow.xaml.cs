@@ -58,10 +58,29 @@ public partial class AnalysisSettingsWindow : Window
         VisFontFamilyBox.Text = VisualizationSettings.FontFamily;
         VisFontSizeBox.Text = VisualizationSettings.FontSize.ToString(CultureInfo.InvariantCulture);
 
-        // === НОВОЕ: Визуализация (Пчелиный рой) ===
+               // === НОВОЕ: Визуализация (Пчелиный рой) ===
         BeeRadiusBox.Text = VisualizationSettings.BeeRadius.ToString(CultureInfo.InvariantCulture);
         BeeLineBox.Text = VisualizationSettings.BeeLineWidth.ToString(CultureInfo.InvariantCulture);
         // ===========================================
+
+        // === КГР: фильтрация ===
+        KgrFilterEnabledCheck.IsChecked = VisualizationSettings.KgrFilterEnabled;
+
+        KgrUseMedianCheck.IsChecked = VisualizationSettings.KgrUseMedianFilter;
+        KgrMedianWindowSecBox.Text = VisualizationSettings.KgrMedianWindowSec.ToString(CultureInfo.InvariantCulture);
+
+        KgrUseEmaCheck.IsChecked = VisualizationSettings.KgrUseEmaFilter;
+        KgrSrTauSecBox.Text = VisualizationSettings.KgrSrEmaTauSec.ToString(CultureInfo.InvariantCulture);
+        KgrScTauSecBox.Text = VisualizationSettings.KgrScEmaTauSec.ToString(CultureInfo.InvariantCulture);
+        KgrHrTauSecBox.Text = VisualizationSettings.KgrHrEmaTauSec.ToString(CultureInfo.InvariantCulture);
+        KgrPpgTauSecBox.Text = VisualizationSettings.KgrPpgEmaTauSec.ToString(CultureInfo.InvariantCulture);
+
+        KgrClampHrCheck.IsChecked = VisualizationSettings.KgrClampHr;
+        KgrHrMinBox.Text = VisualizationSettings.KgrHrMin.ToString(CultureInfo.InvariantCulture);
+        KgrHrMaxBox.Text = VisualizationSettings.KgrHrMax.ToString(CultureInfo.InvariantCulture);
+        KgrHrMaxDeltaBox.Text = VisualizationSettings.KgrHrMaxDeltaPerSec.ToString(CultureInfo.InvariantCulture);
+        // ======================
+
 
         RootTabs.SelectedIndex = Math.Clamp(initialTab, 0, RootTabs.Items.Count - 1);
         Title = RootTabs.SelectedIndex == 1 ? "Настройки отображения" : "Настройки анализа";
@@ -113,10 +132,29 @@ public partial class AnalysisSettingsWindow : Window
                 : VisFontFamilyBox.Text.Trim();
             VisualizationSettings.FontSize = ParseDouble(VisFontSizeBox.Text, min: 6, max: 200, name: "Font size");
 
-            // === НОВОЕ: Сохранение настроек Пчелиного роя ===
+                        // === НОВОЕ: Сохранение настроек Пчелиного роя ===
             VisualizationSettings.BeeRadius = ParseDouble(BeeRadiusBox.Text, min: 1, max: 2000, name: "Bee Radius");
             VisualizationSettings.BeeLineWidth = ParseDouble(BeeLineBox.Text, min: 0.1, max: 200, name: "Bee Line Width");
             // ================================================
+
+            // === КГР: сохранение фильтра ===
+            VisualizationSettings.KgrFilterEnabled = KgrFilterEnabledCheck.IsChecked == true;
+
+            VisualizationSettings.KgrUseMedianFilter = KgrUseMedianCheck.IsChecked == true;
+            VisualizationSettings.KgrMedianWindowSec = ParseDouble(KgrMedianWindowSecBox.Text, min: 0, max: 60, name: "KGR median window (sec)");
+
+            VisualizationSettings.KgrUseEmaFilter = KgrUseEmaCheck.IsChecked == true;
+            VisualizationSettings.KgrSrEmaTauSec = ParseDouble(KgrSrTauSecBox.Text, min: 0, max: 600, name: "KGR SR tau (sec)");
+            VisualizationSettings.KgrScEmaTauSec = ParseDouble(KgrScTauSecBox.Text, min: 0, max: 600, name: "KGR SC tau (sec)");
+            VisualizationSettings.KgrHrEmaTauSec = ParseDouble(KgrHrTauSecBox.Text, min: 0, max: 600, name: "KGR HR tau (sec)");
+            VisualizationSettings.KgrPpgEmaTauSec = ParseDouble(KgrPpgTauSecBox.Text, min: 0, max: 600, name: "KGR PPG tau (sec)");
+
+            VisualizationSettings.KgrClampHr = KgrClampHrCheck.IsChecked == true;
+            VisualizationSettings.KgrHrMin = ParseDouble(KgrHrMinBox.Text, min: 0, max: 1000, name: "KGR HR min");
+            VisualizationSettings.KgrHrMax = ParseDouble(KgrHrMaxBox.Text, min: 0, max: 1000, name: "KGR HR max");
+            VisualizationSettings.KgrHrMaxDeltaPerSec = ParseDouble(KgrHrMaxDeltaBox.Text, min: 0, max: 1000, name: "KGR HR max delta (bpm/sec)");
+            // ==============================
+
 
             // === Сохранение настроек тепловой карты ===
             VisualizationSettings.HeatmapFunction = HeatmapFunctionCombo.SelectedItem is HeatmapFalloff hf

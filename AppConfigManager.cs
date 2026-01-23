@@ -215,7 +215,7 @@ public static class AppConfigManager
         File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    // ====== analysis-visualization (как было, чтобы AnalysisWindow собирался) ======
+    // ====== analysis-visualization ======
 
     public static AnalysisVisualizationSettings LoadAnalysisVisualizationSettings()
     {
@@ -231,6 +231,7 @@ public static class AppConfigManager
 
             if (obj["analysis-visualization"] is not JsonObject visObj) return settings;
 
+            // Фиксации / базовая визуализация
             settings.MinRadius = ReadDouble(visObj, "min-radius", settings.MinRadius);
             settings.MaxRadius = ReadDouble(visObj, "max-radius", settings.MaxRadius);
             settings.MaxDurationSec = ReadDouble(visObj, "max-duration-sec", settings.MaxDurationSec);
@@ -239,6 +240,40 @@ public static class AppConfigManager
             settings.FontFamily = ReadString(visObj, "font-family", settings.FontFamily);
             settings.FontSize = ReadDouble(visObj, "font-size", settings.FontSize);
 
+            // Bee Swarm
+            settings.BeeRadius = ReadDouble(visObj, "bee-radius", settings.BeeRadius);
+            settings.BeeLineWidth = ReadDouble(visObj, "bee-line-width", settings.BeeLineWidth);
+
+            // Heatmap
+            settings.HeatmapRadius = ReadDouble(visObj, "heatmap-radius", settings.HeatmapRadius);
+            settings.HeatmapInitialOpacity = ReadDouble(visObj, "heatmap-alpha", settings.HeatmapInitialOpacity);
+            settings.HeatmapThreshold = ReadDouble(visObj, "heatmap-threshold", settings.HeatmapThreshold);
+
+            var hfStr = ReadString(visObj, "heatmap-function", settings.HeatmapFunction.ToString());
+            if (Enum.TryParse<HeatmapFalloff>(hfStr, ignoreCase: true, out var hf))
+                settings.HeatmapFunction = hf;
+
+            var htStr = ReadString(visObj, "heatmap-type", settings.HeatmapMapType.ToString());
+            if (Enum.TryParse<HeatmapType>(htStr, ignoreCase: true, out var ht))
+                settings.HeatmapMapType = ht;
+
+            // КГР фильтр
+            settings.KgrFilterEnabled = ReadBool(visObj, "kgr-filter-enabled", settings.KgrFilterEnabled);
+            settings.KgrUseMedianFilter = ReadBool(visObj, "kgr-use-median", settings.KgrUseMedianFilter);
+            settings.KgrMedianWindowSec = ReadDouble(visObj, "kgr-median-window-sec", settings.KgrMedianWindowSec);
+            settings.KgrUseEmaFilter = ReadBool(visObj, "kgr-use-ema", settings.KgrUseEmaFilter);
+
+            settings.KgrSrEmaTauSec = ReadDouble(visObj, "kgr-sr-tau-sec", settings.KgrSrEmaTauSec);
+            settings.KgrScEmaTauSec = ReadDouble(visObj, "kgr-sc-tau-sec", settings.KgrScEmaTauSec);
+            settings.KgrHrEmaTauSec = ReadDouble(visObj, "kgr-hr-tau-sec", settings.KgrHrEmaTauSec);
+            settings.KgrPpgEmaTauSec = ReadDouble(visObj, "kgr-ppg-tau-sec", settings.KgrPpgEmaTauSec);
+
+            settings.KgrClampHr = ReadBool(visObj, "kgr-clamp-hr", settings.KgrClampHr);
+            settings.KgrHrMin = ReadDouble(visObj, "kgr-hr-min", settings.KgrHrMin);
+            settings.KgrHrMax = ReadDouble(visObj, "kgr-hr-max", settings.KgrHrMax);
+            settings.KgrHrMaxDeltaPerSec = ReadDouble(visObj, "kgr-hr-max-delta-per-sec", settings.KgrHrMaxDeltaPerSec);
+
+            settings.Normalize();
             return settings;
         }
         catch
@@ -265,8 +300,11 @@ public static class AppConfigManager
             rootObj = new JsonObject();
         }
 
+        settings.Normalize();
+
         rootObj["analysis-visualization"] = new JsonObject
         {
+            // Фиксации / базовая визуализация
             ["min-radius"] = settings.MinRadius,
             ["max-radius"] = settings.MaxRadius,
             ["max-duration-sec"] = settings.MaxDurationSec,
@@ -274,10 +312,57 @@ public static class AppConfigManager
             ["alpha"] = settings.Alpha,
             ["font-family"] = settings.FontFamily,
             ["font-size"] = settings.FontSize,
+
+            // Bee Swarm
+            ["bee-radius"] = settings.BeeRadius,
+            ["bee-line-width"] = settings.BeeLineWidth,
+
+            // Heatmap
+            ["heatmap-function"] = settings.HeatmapFunction.ToString(),
+            ["heatmap-radius"] = settings.HeatmapRadius,
+            ["heatmap-alpha"] = settings.HeatmapInitialOpacity,
+            ["heatmap-threshold"] = settings.HeatmapThreshold,
+            ["heatmap-type"] = settings.HeatmapMapType.ToString(),
+
+            // КГР фильтр
+            ["kgr-filter-enabled"] = settings.KgrFilterEnabled,
+            ["kgr-use-median"] = settings.KgrUseMedianFilter,
+            ["kgr-median-window-sec"] = settings.KgrMedianWindowSec,
+            ["kgr-use-ema"] = settings.KgrUseEmaFilter,
+
+            ["kgr-sr-tau-sec"] = settings.KgrSrEmaTauSec,
+            ["kgr-sc-tau-sec"] = settings.KgrScEmaTauSec,
+            ["kgr-hr-tau-sec"] = settings.KgrHrEmaTauSec,
+            ["kgr-ppg-tau-sec"] = settings.KgrPpgEmaTauSec,
+
+            ["kgr-clamp-hr"] = settings.KgrClampHr,
+            ["kgr-hr-min"] = settings.KgrHrMin,
+            ["kgr-hr-max"] = settings.KgrHrMax,
+            ["kgr-hr-max-delta-per-sec"] = settings.KgrHrMaxDeltaPerSec,
         };
 
         File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
+
+    private static bool ReadBool(JsonObject obj, string key, bool fallback)
+    {
+        var v = obj[key];
+        if (v == null) return fallback;
+
+        if (v is JsonValue val)
+        {
+            if (val.TryGetValue<bool>(out var b)) return b;
+
+            // Иногда пишут 0/1
+            if (val.TryGetValue<int>(out var i)) return i != 0;
+        }
+
+        if (bool.TryParse((string?)v, out var parsedBool)) return parsedBool;
+        if (int.TryParse((string?)v, out var parsedInt)) return parsedInt != 0;
+
+        return fallback;
+    }
+
 
     private static string FindConfigPath()
     {

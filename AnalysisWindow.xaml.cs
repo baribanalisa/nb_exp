@@ -69,8 +69,10 @@ public partial class AnalysisWindow : Window
     private readonly Dictionary<string, double> _stimDurationCache = new();
     private readonly Dictionary<string, StimulusVizSettings> _vizCache = new();
     private readonly Dictionary<string, List<GsrSample>> _gsrCache = new();
+    private readonly Dictionary<string, List<GsrSample>> _gsrFilteredCache = new();
 
     // КГР (Shimmer GSR): поддерживаем несколько форматов записи
+
     // legacy (как GsrData.Size): 88 байт (6 double + battery + reserved + padding)
     // packed: 81 байт (6 double + battery + reserved без паддинга)
     // wire-only: 48 байт (6 double)
@@ -475,12 +477,26 @@ public partial class AnalysisWindow : Window
     {
         try { DisposeVlc(); } catch { }
     }
-    private string RawCacheKey(string resultUid, string stimUid) => K(resultUid, stimUid, _detectSettings.Eye);
+        private string RawCacheKey(string resultUid, string stimUid) => K(resultUid, stimUid, _detectSettings.Eye);
 
     private string GsrCacheKey(string resultUid, string stimUid) =>
         $"{KG(resultUid, stimUid)}|{_kgrDeviceUid ?? ""}|{_kgrRecordSize}";
 
-    private List<GsrSample> GetGsrSamplesForStim(string resultUid, string stimUid)
+    private string GsrFilteredCacheKey(string resultUid, string stimUid) =>
+        $"{GsrCacheKey(resultUid, stimUid)}|{KgrFilterSignature()}";
+
+        private string KgrFilterSignature()
+    {
+        var s = _visualSettings;
+
+        return FormattableString.Invariant(
+            $"{(s.KgrFilterEnabled ? 1 : 0)}|{(s.KgrUseMedianFilter ? 1 : 0)}|{s.KgrMedianWindowSec:0.###}|{(s.KgrUseEmaFilter ? 1 : 0)}|{s.KgrSrEmaTauSec:0.###}|{s.KgrScEmaTauSec:0.###}|{s.KgrHrEmaTauSec:0.###}|{s.KgrPpgEmaTauSec:0.###}|{(s.KgrClampHr ? 1 : 0)}|{s.KgrHrMin:0.###}|{s.KgrHrMax:0.###}|{s.KgrHrMaxDeltaPerSec:0.###}"
+        );
+    }
+
+
+
+        private List<GsrSample> GetGsrSamplesForStim(string resultUid, string stimUid)
     {
         var key = GsrCacheKey(resultUid, stimUid);
         if (_gsrCache.TryGetValue(key, out var cached)) return cached;
@@ -494,8 +510,22 @@ public partial class AnalysisWindow : Window
         return list;
     }
 
+    private List<GsrSample> GetFilteredGsrSamplesForStim(string resultUid, string stimUid)
+    {
+        var raw = GetGsrSamplesForStim(resultUid, stimUid);
+        if (!_visualSettings.KgrFilterEnabled) return raw;
+        if (raw.Count < 2) return raw;
+
+        var key = GsrFilteredCacheKey(resultUid, stimUid);
+        if (_gsrFilteredCache.TryGetValue(key, out var cached)) return cached;
+
+        var filtered = FilterKgrSamples(raw, _visualSettings);
+        _gsrFilteredCache[key] = filtered;
+        return filtered;
+    }
 
     private List<GsrSample> ReadGsrSamplesForStim(string resultUid, string stimUid)
+
     {
         var stimDir = Path.Combine(_expDir, "results", resultUid, stimUid);
         if (!Directory.Exists(stimDir)) return new();
@@ -601,11 +631,257 @@ public partial class AnalysisWindow : Window
             list.Add(new GsrSample(timeSec, sr, sc, hr, ppg));
         }
 
-        return list;
+            return list;
     }
 
+    private static List<GsrSample> FilterKgrSamples(IReadOnlyList<GsrSample> raw, AnalysisVisualizationSettings s)
+    {
+        if (raw.Count < 2)
+            return raw is List<GsrSample> l ? new List<GsrSample>(l) : raw.ToList();
+
+        int n = raw.Count;
+
+        var t = new double[n];
+        var sr = new double[n];
+        var sc = new double[n];
+        var hr = new double[n];
+        var ppg = new double[n];
+
+        for (int i = 0; i < n; i++)
+        {
+            var x = raw[i];
+            t[i] = x.TimeSec;
+            sr[i] = x.Sr;
+            sc[i] = x.Sc;
+            hr[i] = x.Hr;
+            ppg[i] = x.Ppg;
+        }
+
+        // dt для перевода окна медианы из секунд в сэмплы
+        double dtMed = EstimateMedianDt(t);
+        int winSamples = CalcMedianWindowSamples(s.KgrMedianWindowSec, dtMed);
+
+        // HR: clamp + slew-rate (до сглаживания)
+        var hrPrepared = ClampAndSlewHr(hr, t, s);
+
+        double[] srWork = sr;
+        double[] scWork = sc;
+        double[] hrWork = hrPrepared;
+        double[] ppgWork = ppg;
+
+        if (s.KgrUseMedianFilter && winSamples > 1)
+        {
+            srWork = MedianFilter(srWork, winSamples);
+            scWork = MedianFilter(scWork, winSamples);
+            hrWork = MedianFilter(hrWork, winSamples);
+            ppgWork = MedianFilter(ppgWork, winSamples);
+        }
+
+        if (s.KgrUseEmaFilter)
+        {
+            srWork = EmaFilter(srWork, t, s.KgrSrEmaTauSec);
+            scWork = EmaFilter(scWork, t, s.KgrScEmaTauSec);
+            hrWork = EmaFilter(hrWork, t, s.KgrHrEmaTauSec);
+            ppgWork = EmaFilter(ppgWork, t, s.KgrPpgEmaTauSec);
+        }
+
+        var res = new List<GsrSample>(n);
+        for (int i = 0; i < n; i++)
+            res.Add(new GsrSample(t[i], srWork[i], scWork[i], hrWork[i], ppgWork[i]));
+
+        return res;
+    }
+
+    private static double EstimateMedianDt(double[] t)
+    {
+        if (t.Length < 2) return 0;
+
+        var dts = new List<double>(t.Length - 1);
+        for (int i = 1; i < t.Length; i++)
+        {
+            double dt = t[i] - t[i - 1];
+            if (!double.IsFinite(dt) || dt <= 0) continue;
+
+            // грубая защита от мусора (на практике dt обычно миллисекунды-десятки миллисекунд)
+            if (dt > 10) continue;
+
+            dts.Add(dt);
+        }
+
+        if (dts.Count == 0) return 0;
+
+        dts.Sort();
+        int mid = dts.Count / 2;
+        return (dts.Count % 2 == 1) ? dts[mid] : (dts[mid - 1] + dts[mid]) * 0.5;
+    }
+
+    private static int CalcMedianWindowSamples(double windowSec, double dtMed)
+    {
+        if (!double.IsFinite(windowSec) || windowSec <= 0) return 1;
+        if (!double.IsFinite(dtMed) || dtMed <= 0) return 1;
+
+        int w = (int)Math.Round(windowSec / dtMed);
+        if (w < 1) w = 1;
+
+        // хотим нечетное окно (классическая медиана)
+        if (w % 2 == 0) w++;
+
+        // ограничим, чтобы не улететь
+        if (w > 999) w = 999;
+        return w;
+    }
+
+    private static double[] ClampAndSlewHr(double[] hr, double[] t, AnalysisVisualizationSettings s)
+    {
+        int n = hr.Length;
+        var res = new double[n];
+
+        double prev = double.NaN;
+        double prevT = double.NaN;
+
+        for (int i = 0; i < n; i++)
+        {
+            double x = hr[i];
+
+            if (!double.IsFinite(x))
+            {
+                res[i] = double.IsFinite(prev) ? prev : double.NaN;
+                continue;
+            }
+
+            if (s.KgrClampHr)
+            {
+                if (x < s.KgrHrMin) x = s.KgrHrMin;
+                if (x > s.KgrHrMax) x = s.KgrHrMax;
+            }
+
+            if (double.IsFinite(prev) && double.IsFinite(prevT) && s.KgrHrMaxDeltaPerSec > 0)
+            {
+                double dt = t[i] - prevT;
+                if (double.IsFinite(dt) && dt > 0)
+                {
+                    double maxDelta = s.KgrHrMaxDeltaPerSec * dt;
+                    double d = x - prev;
+                    if (d > maxDelta) x = prev + maxDelta;
+                    else if (d < -maxDelta) x = prev - maxDelta;
+                }
+            }
+
+            res[i] = x;
+            prev = x;
+            prevT = t[i];
+        }
+
+        return res;
+    }
+
+    private static double[] MedianFilter(double[] v, int window)
+    {
+        int n = v.Length;
+        var res = new double[n];
+
+        if (window <= 1 || n == 0)
+        {
+            Array.Copy(v, res, n);
+            return res;
+        }
+
+        int half = window / 2;
+
+        var pool = ArrayPool<double>.Shared;
+        var buf = pool.Rent(window);
+
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                int from = Math.Max(0, i - half);
+                int to = Math.Min(n - 1, i + half);
+
+                int cnt = 0;
+                for (int j = from; j <= to; j++)
+                {
+                    var x = v[j];
+                    if (double.IsFinite(x))
+                        buf[cnt++] = x;
+                }
+
+                if (cnt == 0)
+                {
+                    res[i] = double.NaN;
+                    continue;
+                }
+
+                Array.Sort(buf, 0, cnt);
+                res[i] = buf[cnt / 2];
+            }
+
+            return res;
+        }
+        finally
+        {
+            pool.Return(buf);
+        }
+    }
+
+    private static double[] EmaFilter(double[] v, double[] t, double tauSec)
+    {
+        int n = v.Length;
+        var res = new double[n];
+
+        if (n == 0)
+            return res;
+
+        if (!double.IsFinite(tauSec) || tauSec <= 0)
+        {
+            Array.Copy(v, res, n);
+            return res;
+        }
+
+        // ищем первую валидную точку
+        int k = -1;
+        for (int i = 0; i < n; i++)
+        {
+            if (double.IsFinite(v[i]))
+            {
+                k = i;
+                break;
+            }
+            res[i] = double.NaN;
+        }
+
+        if (k < 0)
+            return res;
+
+        double y = v[k];
+        res[k] = y;
+
+        for (int i = k + 1; i < n; i++)
+        {
+            double dt = t[i] - t[i - 1];
+            if (!double.IsFinite(dt) || dt <= 0)
+            {
+                res[i] = y;
+                continue;
+            }
+
+            double x = v[i];
+            if (!double.IsFinite(x))
+            {
+                res[i] = y;
+                continue;
+            }
+
+            double alpha = 1.0 - Math.Exp(-dt / tauSec);
+            y = y + alpha * (x - y);
+            res[i] = y;
+        }
+
+        return res;
+    }
 
     private void UpdateKgrChartsForStim(string stimUid)
+
     {
         if (string.IsNullOrWhiteSpace(stimUid))
             return;
@@ -621,9 +897,10 @@ public partial class AnalysisWindow : Window
         var sources = new List<(ResultDisplayItem Result, List<GsrSample> Samples)>();
         foreach (var result in EnumerateVisibleResults())
         {
-            var samples = GetGsrSamplesForStim(result.ResultUid, stimUid);
+            var samples = GetFilteredGsrSamplesForStim(result.ResultUid, stimUid);
             if (samples.Count < 2) continue;
             sources.Add((result, samples));
+
         }
 
         if (sources.Count == 0)
@@ -1384,10 +1661,15 @@ public partial class AnalysisWindow : Window
             _stimDurationCache.Clear();
             _rawCache.Clear();
             _vizCache.Clear(); // Clear viz cache to apply new heatmap settings
+            _gsrFilteredCache.Clear();
 
             ApplyVisualizationSettings();
             AppConfigManager.SaveAnalysisVisualizationSettings(_visualSettings);
             RefreshCurrentFixations();
+
+            if (_currentStimUid != null)
+                UpdateKgrChartsForStim(_currentStimUid);
+
         }
     }
 
@@ -1409,10 +1691,15 @@ public partial class AnalysisWindow : Window
             _stimDurationCache.Clear();
             _rawCache.Clear();
             _vizCache.Clear(); // Clear viz cache to apply new heatmap settings
+            _gsrFilteredCache.Clear();
 
             ApplyVisualizationSettings();
             AppConfigManager.SaveAnalysisVisualizationSettings(_visualSettings);
             RefreshCurrentFixations();
+
+            if (_currentStimUid != null)
+                UpdateKgrChartsForStim(_currentStimUid);
+
         }
     }
 
