@@ -197,12 +197,27 @@ public partial class AnalysisWindow : Window
         _initialSelectedCount = _initialSelectedResultUids.Count;
         _primaryResultUid = results.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.ResultUid))?.ResultUid?.Trim();
 
-        _exp = exp;
+        _exp = exp ?? TryLoadExperiment(expDir);
         _visualSettings = AppConfigManager.LoadAnalysisVisualizationSettings();
 
         Title = _initialSelectedCount == 1 && !string.IsNullOrWhiteSpace(_primaryResultUid)
             ? $"Анализ — {_primaryResultUid}"
             : $"Анализ — {_initialSelectedCount} результатов";
+    }
+
+    private static ExperimentFile? TryLoadExperiment(string expDir)
+    {
+        var path = Path.Combine(expDir, "exp.json");
+        if (!File.Exists(path)) return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<ExperimentFile>(File.ReadAllText(path), _jsonOpts);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
 
