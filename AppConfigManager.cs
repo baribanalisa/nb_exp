@@ -282,7 +282,7 @@ public static class AppConfigManager
         }
     }
 
-    public static void SaveAnalysisVisualizationSettings(AnalysisVisualizationSettings settings)
+        public static void SaveAnalysisVisualizationSettings(AnalysisVisualizationSettings settings)
     {
         var cfgPath = FindConfigPath();
         var dir = Path.GetDirectoryName(cfgPath);
@@ -300,11 +300,8 @@ public static class AppConfigManager
             rootObj = new JsonObject();
         }
 
-        settings.Normalize();
-
         rootObj["analysis-visualization"] = new JsonObject
         {
-            // Фиксации / базовая визуализация
             ["min-radius"] = settings.MinRadius,
             ["max-radius"] = settings.MaxRadius,
             ["max-duration-sec"] = settings.MaxDurationSec,
@@ -312,59 +309,108 @@ public static class AppConfigManager
             ["alpha"] = settings.Alpha,
             ["font-family"] = settings.FontFamily,
             ["font-size"] = settings.FontSize,
-
-            // Bee Swarm
-            ["bee-radius"] = settings.BeeRadius,
-            ["bee-line-width"] = settings.BeeLineWidth,
-
-            // Heatmap
-            ["heatmap-function"] = settings.HeatmapFunction.ToString(),
-            ["heatmap-radius"] = settings.HeatmapRadius,
-            ["heatmap-alpha"] = settings.HeatmapInitialOpacity,
-            ["heatmap-threshold"] = settings.HeatmapThreshold,
-            ["heatmap-type"] = settings.HeatmapMapType.ToString(),
-
-            // КГР фильтр
-            ["kgr-filter-enabled"] = settings.KgrFilterEnabled,
-            ["kgr-use-median"] = settings.KgrUseMedianFilter,
-            ["kgr-median-window-sec"] = settings.KgrMedianWindowSec,
-            ["kgr-use-ema"] = settings.KgrUseEmaFilter,
-
-            ["kgr-sr-tau-sec"] = settings.KgrSrEmaTauSec,
-            ["kgr-sc-tau-sec"] = settings.KgrScEmaTauSec,
-            ["kgr-hr-tau-sec"] = settings.KgrHrEmaTauSec,
-            ["kgr-ppg-tau-sec"] = settings.KgrPpgEmaTauSec,
-
-            ["kgr-clamp-hr"] = settings.KgrClampHr,
-            ["kgr-hr-min"] = settings.KgrHrMin,
-            ["kgr-hr-max"] = settings.KgrHrMax,
-            ["kgr-hr-max-delta-per-sec"] = settings.KgrHrMaxDeltaPerSec,
         };
 
         File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private static bool ReadBool(JsonObject obj, string key, bool fallback)
+    // ====== multi-export (настройки окна мультиэкспорта) ======
+
+    public static MultiExportSettings LoadMultiExportSettings()
     {
-        var v = obj[key];
-        if (v == null) return fallback;
+        var cfgPath = FindConfigPath();
+        var s = new MultiExportSettings();
 
-        if (v is JsonValue val)
+        if (!File.Exists(cfgPath)) return s;
+
+        try
         {
-            if (val.TryGetValue<bool>(out var b)) return b;
+            var obj = JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject;
+            if (obj == null) return s;
 
-            // Иногда пишут 0/1
-            if (val.TryGetValue<int>(out var i)) return i != 0;
+            if (obj["multi-export"] is not JsonObject me) return s;
+
+            s.OutputDir = ReadString(me, "output-dir", s.OutputDir);
+            s.FilenameTemplate = ReadString(me, "filename-template", s.FilenameTemplate);
+
+            var modeStr = ReadString(me, "mode", s.Mode.ToString());
+            if (Enum.TryParse<MultiExportMode>(modeStr, ignoreCase: true, out var parsedMode))
+                s.Mode = parsedMode;
+
+            s.ExportSource = ReadBool(me["export-source"], s.ExportSource);
+            s.ExportRaw = ReadBool(me["export-raw"], s.ExportRaw);
+            s.ExportActions = ReadBool(me["export-actions"], s.ExportActions);
+            s.ExportAoi = ReadBool(me["export-aoi"], s.ExportAoi);
+            s.ExportGazeImage = ReadBool(me["export-gaze-image"], s.ExportGazeImage);
+            s.ExportHeatImage = ReadBool(me["export-heat-image"], s.ExportHeatImage);
+            s.ExportEdf = ReadBool(me["export-edf"], s.ExportEdf);
+
+            return s;
         }
-
-        if (bool.TryParse((string?)v, out var parsedBool)) return parsedBool;
-        if (int.TryParse((string?)v, out var parsedInt)) return parsedInt != 0;
-
-        return fallback;
+        catch
+        {
+            return s;
+        }
     }
 
+    public static void SaveMultiExportSettings(MultiExportSettings settings)
+    {
+        var cfgPath = FindConfigPath();
+        var dir = Path.GetDirectoryName(cfgPath);
+        if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+
+        JsonObject rootObj;
+        try
+        {
+            rootObj = File.Exists(cfgPath)
+                ? (JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject) ?? new JsonObject()
+                : new JsonObject();
+        }
+        catch
+        {
+            rootObj = new JsonObject();
+        }
+
+        rootObj["multi-export"] = new JsonObject
+        {
+            ["output-dir"] = settings.OutputDir,
+            ["filename-template"] = settings.FilenameTemplate,
+            ["mode"] = settings.Mode.ToString(),
+
+            ["export-source"] = settings.ExportSource,
+            ["export-raw"] = settings.ExportRaw,
+            ["export-actions"] = settings.ExportActions,
+            ["export-aoi"] = settings.ExportAoi,
+            ["export-gaze-image"] = settings.ExportGazeImage,
+            ["export-heat-image"] = settings.ExportHeatImage,
+            ["export-edf"] = settings.ExportEdf,
+        };
+
+        File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static bool ReadBool(JsonNode? n, bool def = false)
+    {
+        if (n == null) return def;
+
+        if (n is JsonValue v)
+        {
+            if (v.TryGetValue<bool>(out var b)) return b;
+            if (v.TryGetValue<int>(out var i)) return i != 0;
+            if (v.TryGetValue<string>(out var s))
+            {
+                if (bool.TryParse(s, out var pb)) return pb;
+                if (int.TryParse(s, out var pi)) return pi != 0;
+            }
+        }
+
+        if (bool.TryParse((string?)n, out var b2)) return b2;
+        if (int.TryParse((string?)n, out var i2)) return i2 != 0;
+        return def;
+    }
 
     private static string FindConfigPath()
+
     {
         var localDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -389,13 +435,19 @@ public static class AppConfigManager
         return Path.Combine(localDir, "config.json");
     }
 
-    private static double ReadDouble(JsonObject obj, string key, double fallback)
+       private static double ReadDouble(JsonObject obj, string key, double fallback)
     {
         var v = obj[key];
         if (v == null) return fallback;
         if (v is JsonValue val && val.TryGetValue<double>(out var d)) return d;
         if (double.TryParse((string?)v, out var parsed)) return parsed;
         return fallback;
+    }
+
+    private static bool ReadBool(JsonObject obj, string key, bool fallback)
+    {
+        var v = obj[key];
+        return ReadBool(v, fallback);
     }
 
     private static string ReadString(JsonObject obj, string key, string fallback)
@@ -406,3 +458,5 @@ public static class AppConfigManager
         return string.IsNullOrWhiteSpace(s) ? fallback : s;
     }
 }
+
+

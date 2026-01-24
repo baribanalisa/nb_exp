@@ -466,8 +466,19 @@
                                    VerticalAlignment="Center"/>
                     </StackPanel>
 
-                    <!-- actions справа (вместо ToolBar, но с теми же именами/обработчиками) -->
+                                        <!-- actions справа (вместо ToolBar, но с теми же именами/обработчиками) -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+
+                        <!-- Мультиэкспорт -->
+                        <Button Click="MultiExport_Click"
+                                IsEnabled="{Binding HasSelection}"
+                                Style="{StaticResource TopBarPillButton}"
+                                Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0"/>
+                                <TextBlock Text="Мультиэкспорт"/>
+                            </StackPanel>
+                        </Button>
 
                         <Button Click="Settings_Click"
                                 Style="{StaticResource TopBarPillButton}"
@@ -512,6 +523,7 @@
 
 
 
+
                 </Grid>
             </Border>
 
@@ -541,7 +553,7 @@
                             FontWeight="SemiBold"
                             Foreground="{StaticResource TextBrush}"/>
 
-                    <TextBlock Grid.Row="1"
+                                        <TextBlock Grid.Row="1"
                             Text="Select an experiment to view details"
                             Margin="0,6,0,14"
                             Foreground="{StaticResource MutedTextBrush}"/>
@@ -582,6 +594,7 @@
 
                     <ListView Grid.Row="3"
                             x:Name="ExpList"
+
                             ItemsSource="{Binding Experiments}"
                             SelectedItem="{Binding SelectedExperiment, Mode=TwoWay}"
                             Background="Transparent"

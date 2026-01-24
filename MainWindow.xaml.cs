@@ -888,7 +888,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void Export_Click(object sender, RoutedEventArgs e)
+        private async void Export_Click(object sender, RoutedEventArgs e)
     {
         if (ExpList.SelectedItem is not ExperimentListItem item) return;
 
@@ -932,7 +932,41 @@ public partial class MainWindow : Window
         }
     }
 
+    private void MultiExport_Click(object sender, RoutedEventArgs e)
+    {
+        if (ExpList.SelectedItem is not ExperimentListItem item) return;
+
+        var vm = (MainViewModel)DataContext;
+
+        var selected = new List<string>();
+        try
+        {
+            foreach (DataRowView rv in vm.ResultsView)
+            {
+                if (rv["Select"] is bool b && b)
+                {
+                    var uid = rv["ResultUid"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(uid))
+                        selected.Add(uid);
+                }
+            }
+        }
+        catch
+        {
+            // если по каким-то причинам таблица результатов ещё не готова — просто откроем окно без предвыбора
+            selected.Clear();
+        }
+
+        var w = new MultiExportWindow(item.ExpDir, selected)
+        {
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        w.ShowDialog();
+    }
+
     private static void CopyDirectory(string sourceDir, string targetDir)
+
     {
         Directory.CreateDirectory(targetDir);
 

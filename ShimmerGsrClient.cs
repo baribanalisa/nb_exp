@@ -627,7 +627,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         if (Interlocked.Exchange(ref _stopping, 1) != 0)
             return;
 
-        // 1) Сначала рубим UDP так, чтобы ReceiveAsync точно проснулся
+        // 1) Сначала рубим UDP так, чтобы ReceiveAsync точно проснулся и порт освободился
         try { _udpCts?.Cancel(); } catch { }
         try { _udp?.Close(); } catch { }
         try { _udp?.Dispose(); } catch { }
@@ -640,18 +640,26 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         }
         catch { /* ignore */ }
 
-        // 2) stop допустим только если start реально был
+        // 2) Пытаемся корректно остановить Shimmer.exe через HTTP, но строго с коротким таймаутом.
+        // Важно: Dispose/закрытие окна не должен зависать на HttpClient.Timeout (60s).
         if (_streamingStarted)
         {
-            try { await PostExpectOkAsync("stop", JsonSerializer.Serialize(new { dummy = "" }), CancellationToken.None).ConfigureAwait(false); }
-            catch { }
+            try
+            {
+                using var stopCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(800));
+                await PostExpectOkAsync("stop", JsonSerializer.Serialize(new { dummy = "" }), stopCts.Token).ConfigureAwait(false);
+            }
+            catch { /* ignore */ }
         }
 
-        // 3) kill пробуем всегда (в худшем случае упадёт и мы добьём процесс ниже)
-        try { await PostExpectOkAsync("kill", JsonSerializer.Serialize(new { dummy = "" }), CancellationToken.None).ConfigureAwait(false); }
-        catch { }
+        try
+        {
+            using var killCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(800));
+            await PostExpectOkAsync("kill", JsonSerializer.Serialize(new { dummy = "" }), killCts.Token).ConfigureAwait(false);
+        }
+        catch { /* ignore */ }
 
-        // 4) Гарантированно прибиваем процесс и ждём, чтобы DLL отпустились
+        // 3) Гарантированно прибиваем процесс и ждём, чтобы порт/BT реально освободились
         try
         {
             if (_proc != null && !_proc.HasExited)
@@ -660,7 +668,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
                 _proc.WaitForExit(2000);
             }
         }
-        catch { }
+        catch { /* ignore */ }
 
         try { _proc?.Dispose(); } catch { }
         _proc = null;
@@ -670,6 +678,8 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
 
         _streamingStarted = false;
     }
+
+
 
     private void BindUdp()
     {

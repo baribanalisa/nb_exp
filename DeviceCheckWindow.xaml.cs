@@ -110,7 +110,8 @@ public partial class DeviceCheckWindow : Window
             // UI-часть (отписки/скрытие панелей) — на UI потоке
             StopShimmerCharts();
 
-            // Shimmer: DisposeAsync может зависнуть/долго ждать — уводим в background + таймаут
+            // Shimmer: теперь DisposeAsync/StopAsync быстрый и гарантированно освобождает порт/BT,
+            // поэтому просто дожидаемся корректного завершения (без гонок и “висящих” процессов).
             if (ShimmerClient != null)
             {
                 var client = ShimmerClient;
@@ -119,20 +120,14 @@ public partial class DeviceCheckWindow : Window
 
                 try
                 {
-                    Task disposeTask = Task.Run(async () =>
-                    {
-                        try { await client.DisposeAsync().ConfigureAwait(false); }
-                        catch { /* ignore */ }
-                    });
-
-                    // Не даём закрытию окна зависнуть навсегда
-                    await Task.WhenAny(disposeTask, Task.Delay(2500));
+                    await client.DisposeAsync();
                 }
                 catch
                 {
                     // ignore
                 }
             }
+
         }
         finally
         {

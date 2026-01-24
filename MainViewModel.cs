@@ -320,48 +320,78 @@ public sealed class MainViewModel : ObservableObject
     }
 
     private static List<ExperimentListItem> ScanExperiments(string root)
+{
+    Directory.CreateDirectory(root);
+
+    var list = new List<ExperimentListItem>();
+
+    foreach (var dir in Directory.EnumerateDirectories(root))
     {
-        Directory.CreateDirectory(root);
+        var expJson = Path.Combine(dir, "exp.json");
+        if (!File.Exists(expJson)) continue;
 
-        var list = new List<ExperimentListItem>();
-
-        foreach (var dir in Directory.EnumerateDirectories(root))
+        try
         {
-            var expJson = Path.Combine(dir, "exp.json");
-            if (!File.Exists(expJson)) continue;
+            var exp = JsonSerializer.Deserialize<ExperimentFile>(File.ReadAllText(expJson));
+            if (exp == null) continue;
 
-            try
+            var resultsDir = Path.Combine(dir, "results");
+            int resultsCount = CountReadableResults(resultsDir);
+
+            list.Add(new ExperimentListItem
             {
-                var exp = JsonSerializer.Deserialize<ExperimentFile>(File.ReadAllText(expJson));
-                if (exp == null) continue;
-
-                int resultsCount = 0;
-                var resultsDir = Path.Combine(dir, "results");
-                if (Directory.Exists(resultsDir))
-                    resultsCount = Directory.EnumerateDirectories(resultsDir).Count();
-
-                list.Add(new ExperimentListItem
-                {
-                    UidFolder = Path.GetFileName(dir),
-                    ExpDir = dir,
-                    ExpJsonPath = expJson,
-                    Name = exp.Name,
-                    Description = exp.Description,
-                    CreateTime = exp.CreateTime,
-                    ModTime = exp.ModTime,
-                    ResultsCount = resultsCount,
-                    DevicesText = BuildDevicesText(exp),
-                });
-            }
-            catch
-            {
-                // битый exp.json — пропускаем
-            }
+                UidFolder = Path.GetFileName(dir),
+                ExpDir = dir,
+                ExpJsonPath = expJson,
+                Name = exp.Name,
+                Description = exp.Description,
+                CreateTime = exp.CreateTime,
+                ModTime = exp.ModTime,
+                ResultsCount = resultsCount,
+                DevicesText = BuildDevicesText(exp),
+            });
         }
-
-        // “свежие” сверху (если mod-time парсится плохо, всё равно будет стабильный порядок по числу)
-        return list.OrderByDescending(x => x.ModTime).ToList();
+        catch
+        {
+            // битый exp.json — пропускаем
+        }
     }
+
+    // “свежие” сверху (если mod-time парсится плохо, всё равно будет стабильный порядок по числу)
+    return list.OrderByDescending(x => x.ModTime).ToList();
+}
+
+private static int CountReadableResults(string resultsDir)
+{
+    if (!Directory.Exists(resultsDir))
+        return 0;
+
+    int count = 0;
+
+    foreach (var dir in Directory.EnumerateDirectories(resultsDir))
+    {
+        var resultJson = Path.Combine(dir, "result.json");
+        if (!File.Exists(resultJson))
+            continue;
+
+        try
+        {
+            var json = File.ReadAllText(resultJson);
+            var result = JsonSerializer.Deserialize<ResultFile>(json, _jsonOpts);
+            if (result == null)
+                continue;
+
+            count++;
+        }
+        catch
+        {
+            // битый/неполный result.json — пропускаем
+        }
+    }
+
+    return count;
+}
+
 
     private static string BuildDevicesText(ExperimentFile exp)
     {

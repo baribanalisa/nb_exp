@@ -4535,10 +4535,28 @@ public partial class AnalysisWindow : Window
 
         static float ReadF(Span<byte> b, int off) =>
             BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(b.Slice(off, 4)));
-    }
+        }
 
-    private void ExportStatistics(string resultUid, string outputDir)
-    {
+        private static string ResolveStimulusTitle(StimulFile stim)
+        {
+        return !string.IsNullOrWhiteSpace(stim.Filename)
+            ? Path.GetFileName(stim.Filename)
+            : (!string.IsNullOrWhiteSpace(stim.Uid) ? stim.Uid : "stimulus");
+        }
+
+        private static string CsvEscape(string value)
+        {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0)
+            return value;
+
+        return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+
+        private void ExportStatistics(string resultUid, string outputDir)
+        {
         var csvPath = Path.Combine(outputDir, "stats.csv");
         using var writer = new StreamWriter(csvPath, false, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
@@ -4551,8 +4569,10 @@ public partial class AnalysisWindow : Window
         {
             if (stim.Kind == 0) continue;
 
+            var stimulusTitle = CsvEscape(ResolveStimulusTitle(stim));
+
             var (wPx, hPx, wMm, hMm) = ReadStimulusScreenInfo(resultUid, stim.Uid);
-            
+
             var duration = GetStimTotalSec(resultUid, stim.Uid);
             var (fixScreen, fixStim) = EnsureFixationsForStimPaired(resultUid, stim.Uid);
 
@@ -4560,7 +4580,7 @@ public partial class AnalysisWindow : Window
 
             if (fixStim.Count == 0 || fixScreen.Count == 0 || fixStim.Count != fixScreen.Count)
             {
-                writer.WriteLine($"{stim.Uid},{duration.ToString("F3", CultureInfo.InvariantCulture)},{Nan},{Nan},0,{Nan},{Nan},0");
+                writer.WriteLine($"{stimulusTitle},{duration.ToString("F3", CultureInfo.InvariantCulture)},{Nan},{Nan},0,{Nan},{Nan},0");
                 continue;
             }
 
@@ -4617,23 +4637,22 @@ public partial class AnalysisWindow : Window
             string avgSaccadePxStr = float.IsNaN(avgSaccadeDistPx) ? Nan : avgSaccadeDistPx.ToString("F2", CultureInfo.InvariantCulture);
             string avgSaccadeDegStr = float.IsNaN(avgSaccadeAngleDeg) ? Nan : avgSaccadeAngleDeg.ToString("F2", CultureInfo.InvariantCulture);
 
-            writer.WriteLine($"{stim.Uid},{duration.ToString("F3", CultureInfo.InvariantCulture)},{timeToFirstFix.ToString("F3", CultureInfo.InvariantCulture)},{avgFixDuration.ToString("F3", CultureInfo.InvariantCulture)},{fixCount},{avgSaccadePxStr},{avgSaccadeDegStr},{saccadeCount}");
-        }
-    }
+            writer.WriteLine($"{stimulusTitle},{duration.ToString("F3", CultureInfo.InvariantCulture)},{timeToFirstFix.ToString("F3", CultureInfo.InvariantCulture)},{avgFixDuration.ToString("F3", CultureInfo.InvariantCulture)},{fixCount},{avgSaccadePxStr},{avgSaccadeDegStr},{saccadeCount}");
+            }
+            }
 
-    private double GetStimTotalSec(string resultUid, string stimUid)
-    {
-        var key = KF(resultUid, stimUid);
-        if (_stimDurationCache.TryGetValue(key, out var cached))
+            private double GetStimTotalSec(string resultUid, string stimUid)
+            {
+            var key = KF(resultUid, stimUid);
+            if (_stimDurationCache.TryGetValue(key, out var cached))
             return cached;
 
-        var raw = GetRawSamplesForStim(resultUid, stimUid);
-        if (raw.Count == 0)
+            var raw = GetRawSamplesForStim(resultUid, stimUid);
+            if (raw.Count == 0)
             return 0;
 
-        var duration = raw[^1].TimeSec;
-        _stimDurationCache[key] = duration;
-        return duration;
-    }
-}
-
+            var duration = raw[^1].TimeSec;
+            _stimDurationCache[key] = duration;
+            return duration;
+            }
+            }
