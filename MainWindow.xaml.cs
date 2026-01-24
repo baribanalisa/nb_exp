@@ -1,4 +1,4 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -994,6 +994,9 @@ public partial class MainWindow : Window
     {
         var vm = (MainViewModel)DataContext;
         await vm.ReloadExperimentsAsync(selectUid: (ExpList.SelectedItem as ExperimentListItem)?.UidFolder);
+        
+        // Принудительно проверяем подключение трекера при обновлении
+        await vm.RefreshEyeTrackerConnectionAsync();
     }
 
 
