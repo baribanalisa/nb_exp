@@ -531,6 +531,7 @@ public partial class MainWindow : Window
             "\nСохранить неполный результат?";
 
         var res = MessageBox.Show(
+            this,
             msg,
             "Сохранить результат",
             MessageBoxButton.YesNo,
@@ -806,6 +807,7 @@ public partial class MainWindow : Window
             catch { }
         }
 
+        ExitRunMode();
         PromptSavePendingResult("Выход из приложения");
 
         _closeAllowed = true;
@@ -1128,12 +1130,14 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
+            ExitRunMode();
             var saved = PromptSavePendingResult(_abortedByUser ? "Остановлено пользователем" : "Отмена/выход");
             vm.StatusText = saved ? "Сохранён неполный результат" : "Остановлено";
             await ((MainViewModel)DataContext).ReloadExperimentsAsync(selectUid: item.UidFolder);
         }
         catch (Exception ex)
         {
+            ExitRunMode();
             MessageBox.Show(ex.ToString(), "Experiment error", MessageBoxButton.OK, MessageBoxImage.Error);
 
             var saved = PromptSavePendingResult("Ошибка во время эксперимента");

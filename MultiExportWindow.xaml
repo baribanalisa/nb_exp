@@ -388,7 +388,7 @@
                 <TextBlock Grid.Row="2" Text="Режим" Style="{StaticResource FormLabelStyle}" Margin="0,10,0,0"/>
 
                 <!-- один “современный” инпут без внутренней рамки ComboBox -->
-                <Border Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                                <Border Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
                         Margin="0,10,0,0"
                         CornerRadius="10"
                         BorderBrush="#D1D5DB"
@@ -397,11 +397,39 @@
                     <ComboBox Margin="10,4"
                               HorizontalAlignment="Stretch"
                               VerticalContentAlignment="Center"
-                              Background="Transparent"
+                              Background="{StaticResource SurfaceBrush}"
+                              Foreground="{StaticResource TextBrush}"
                               BorderThickness="0"
                               ItemsSource="{Binding Modes}"
-                              SelectedItem="{Binding Mode}"/>
+                              SelectedItem="{Binding Mode}">
+
+                        <!-- Принудительно делаем внутренности ComboBox светлыми (включая Popup) -->
+                        <ComboBox.Resources>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FFFFFF"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FFFFFF"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="#FFFFFF"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#111827"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#6B7280"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#E5E7EB"/>
+                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#111827"/>
+
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+                                <Setter Property="Padding" Value="10,6"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter Property="Background" Value="#F3F4F6"/>
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Resources>
+                    </ComboBox>
                 </Border>
+
 
 
                 <Grid Grid.Row="3" Grid.ColumnSpan="3" Margin="0,14,0,0">
