@@ -267,6 +267,18 @@ public sealed class MainViewModel : ObservableObject
         
         _trackerClient = new TrackerClient(TrackerDefaults.BaseUrl);
 
+        // Запускаем автоматическую проверку трекера при инициализации
+        _ = Task.Run(async () =>
+        {
+            await ProbeEyeTrackerAsync();
+            
+            // Запускаем периодическую проверку трекера
+            while (!App.Current.Dispatcher.HasShutdownStarted)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2)); // Проверяем каждые 2 секунды
+                await ProbeEyeTrackerAsync();
+            }
+        });
     }
     private DataView _resultsView = new DataTable().DefaultView;
     public DataView ResultsView
@@ -699,16 +711,26 @@ public sealed class MainViewModel : ObservableObject
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, timeout.Token);
 
             // “жив ли сервер” — если ответил на GET состояния калибровки, считаем подключенным
-            _ = await _trackerClient.GetCalibrationStateAsync(linked.Token);
-
-            if (!cts.IsCancellationRequested)
+            // Check tracker state - if we can get calibration state, tracker is connected
+            var calibrationState = await _trackerClient.GetCalibrationStateAsync(linked.Token);
+            
+            // If we got calibration state, tracker is connected
+            if (!cts.IsCancellationRequested && calibrationState.HasValue)
                 SetStatus(DeviceKind.EyeTracker, DeviceStatus.Connected);
+            else if (!cts.IsCancellationRequested)
+                SetStatus(DeviceKind.EyeTracker, DeviceStatus.Disconnected);
         }
         catch
         {
             if (!cts.IsCancellationRequested)
                 SetStatus(DeviceKind.EyeTracker, DeviceStatus.Disconnected);
         }
+    }
+
+    // Public method to manually check tracker connection
+    public async Task RefreshEyeTrackerConnectionAsync()
+    {
+        await ProbeEyeTrackerAsync();
     }
 
     // -------- Device cards (Devices section UI) --------
@@ -781,5 +803,4 @@ public sealed class MainViewModel : ObservableObject
             => (Brush)new BrushConverter().ConvertFromString(hex)!;
     }
 }
-
 
