@@ -155,7 +155,7 @@ public partial class DeviceCheckWindow : Window
         await RunChecksAsync();
     }
 
-    private void Start_Click(object sender, RoutedEventArgs e)
+    private async void Start_Click(object sender, RoutedEventArgs e)
     {
         // если в эксперименте есть ShimmerGSR и он не "ОК" — спрашиваем, запускать ли без него
         var shimmerDev = _exp.Devices.FirstOrDefault(d =>
@@ -178,8 +178,25 @@ public partial class DeviceCheckWindow : Window
 
                 SkipShimmer = true;
 
-                // важно: если пропускаем КГР — НЕ сохраняем клиента и даём окну корректно всё прибить при закрытии
-                _keepClients = false;
+                // важно: если пропускаем КГР — не блокируем закрытие окна
+                _keepClients = true;
+
+                if (ShimmerClient != null)
+                {
+                    var client = ShimmerClient;
+                    ShimmerClient = null;
+                    ShimmerDevice = null;
+                    StopShimmerCharts();
+
+                    try
+                    {
+                        await client.DisposeAsync();
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }
             }
             else
             {
