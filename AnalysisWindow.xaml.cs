@@ -1568,22 +1568,46 @@ public partial class AnalysisWindow : Window
                 var kind = st.Kind ?? 0;
                 if (kind == 0) continue; // калибровки пока пропускаем
 
-                var path = ResolveStimulusPath(_expDir, st.Uid, st.Filename);
-                var hasFile = path != null && File.Exists(path);
+                string? path;
+                bool hasFile;
+                bool isVideo;
+                bool isImage;
 
-                var isVideo = hasFile && IsVideoFile(path!);
-                var isImage = hasFile && IsImageFile(path!);
+                if (kind == StimulusKinds.ScreenRecord)
+                {
+                    // SCREEN_RECORD хранится в results/<primaryResultUid>/<stimUid>/stimul.mkv
+                    path = !string.IsNullOrWhiteSpace(_primaryResultUid)
+                        ? Path.Combine(_expDir, "results", _primaryResultUid!, st.Uid, "stimul.mkv")
+                        : null;
 
-                var title = !string.IsNullOrWhiteSpace(st.Filename)
-                    ? Path.GetFileName(st.Filename)
-                    : (!string.IsNullOrWhiteSpace(st.Uid) ? st.Uid : "stimulus");
+                    hasFile = path != null && File.Exists(path);
+                    isVideo = hasFile;
+                    isImage = false;
+                }
+                else
+                {
+                    path = ResolveStimulusPath(_expDir, st.Uid, st.Filename);
+                    hasFile = path != null && File.Exists(path);
+                    isVideo = hasFile && IsVideoFile(path!);
+                    isImage = hasFile && IsImageFile(path!);
+                }
 
                 var bg = TryParseRgbaBrush(st.Rgba);
 
-                var subtitle = isVideo ? "Видео" :
-                               isImage ? "Изображение" :
-                               bg != null ? "Цветовой стимул" :
-                               "Файл не найден";
+                var title = kind == StimulusKinds.ScreenRecord
+                    ? (!string.IsNullOrWhiteSpace(st.Filename)
+                        ? Path.GetFileName(st.Filename)
+                        : "Запись экрана")
+                    : (!string.IsNullOrWhiteSpace(st.Filename)
+                        ? Path.GetFileName(st.Filename)
+                        : (!string.IsNullOrWhiteSpace(st.Uid) ? st.Uid : "stimulus"));
+
+                var subtitle = kind == StimulusKinds.ScreenRecord
+                    ? (hasFile ? "Запись экрана" : "Запись экрана (файл не найден)")
+                    : (isVideo ? "Видео" :
+                    isImage ? "Изображение" :
+                    bg != null ? "Цветовой стимул" :
+                    "Файл не найден");
 
                 var thumbnail = hasFile && isImage ? GenerateThumbnail(path!, isImage, bg) : null;
                 var previewBg = bg ?? Brushes.Transparent;
@@ -1608,6 +1632,7 @@ public partial class AnalysisWindow : Window
             // минимальный каркас: если что-то не так — просто пустой список
         }
     }
+
 
     // -------- UI actions --------
 

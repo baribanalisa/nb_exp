@@ -93,3 +93,16 @@ public sealed class CharValue
     [JsonPropertyName("val")] public string Val { get; set; } = "";
 }
 public sealed record SelectedResult(string ResultUid, string? Rgba);
+
+public static class StimulusKinds
+{
+    // В проекте уже используется kind==0 как "калибровка".
+    public const int Calibration = 0;
+
+    // Обычные файловые стимулы (исторически трактуются как kind!=0).
+    // Не полагаемся на это значение в логике, но оставляем для документации.
+    public const int FileStimulus = 1;
+
+    // Новый тип: запись экрана в results/<resultUid>/<stimUid>/stimul.mkv
+    public const int ScreenRecord = 2;
+}

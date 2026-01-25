@@ -1397,14 +1397,36 @@ public partial class MainWindow : Window
         FfmpegRecorder? deskRec = null;
         FfmpegRecorder? camRec = null;
 
+        // ffmpeg нужен и для глобальной записи (desktop/camera), и для per-stim SCREEN_RECORD
+        string? ffmpegExe = null;
+        bool screenRecordFfmpegWarned = false;
+
+        bool needFfmpeg =
+            _recordDesktop ||
+            _recordCamera ||
+            stimulsRun.Any(s => (s.Kind ?? 0) == StimulusKinds.ScreenRecord);
+
+        if (needFfmpeg)
+        {
+            ffmpegExe = CameraDeviceProvider.FindFfmpegExe();
+            if (string.IsNullOrWhiteSpace(ffmpegExe))
+            {
+                MessageBox.Show(
+                    "Для записи (включена запись экрана/камеры и/или есть стимулы SCREEN_RECORD) требуется ffmpeg, но он не найден.\n" +
+                    "Положи ffmpeg.exe рядом с приложением или добавь в PATH.\n" +
+                    "Запись будет пропущена.",
+                    "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                // чтобы не спамить предупреждениями внутри цикла SCREEN_RECORD
+                screenRecordFfmpegWarned = true;
+            }
+        }
+
         if (_recordDesktop || _recordCamera)
         {
-            var ffmpeg = CameraDeviceProvider.FindFfmpegExe();
-            if (string.IsNullOrWhiteSpace(ffmpeg))
+            if (string.IsNullOrWhiteSpace(ffmpegExe))
             {
-                MessageBox.Show("Запись включена в настройках, но ffmpeg не найден.\n" +
-                                "Положи ffmpeg.exe рядом с приложением или добавь в PATH.",
-                                "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
+                // предупреждение уже показали выше, просто не стартуем
             }
             else
             {
@@ -1413,7 +1435,7 @@ public partial class MainWindow : Window
                     try
                     {
                         var outPath = Path.Combine(resultDir, "desktop.mkv");
-                        deskRec = await FfmpegRecorder.StartDesktopAsync(ffmpeg, outPath);
+                        deskRec = await FfmpegRecorder.StartDesktopAsync(ffmpegExe, outPath);
                     }
                     catch (Exception ex)
                     {
@@ -1433,29 +1455,27 @@ public partial class MainWindow : Window
                     {
                         try
                         {
-                            var outPath = Path.Combine(resultDir, "camera.mkv");
                             var camOut = Path.Combine(resultDir, "camera.mkv");
 
                             camRec = await FfmpegRecorder.StartCameraAsync(
-                                ffmpegExe: ffmpeg!,
+                                ffmpegExe: ffmpegExe!,
                                 cameraDeviceName: _cameraDeviceName!,     // то, что ты сохраняешь из ComboBox
                                 outputPath: camOut,
                                 recordAudio: _recordAudio,                // чекбокс “звук”
                                 audioDeviceName: _audioDeviceName,        // выбранный микрофон
                                 fps: 30
                             );
-
                         }
                         catch (Exception ex)
                         {
                             MessageBox.Show("Не удалось запустить запись камеры.\n" + ex.Message,
                                 "Запись камеры", MessageBoxButton.OK, MessageBoxImage.Warning);
-
                         }
                     }
                 }
             }
         }
+
 
         DeviceFile? shimmerDev = skipShimmer
             ? null
@@ -1635,16 +1655,26 @@ public partial class MainWindow : Window
 
                 sw ??= Stopwatch.StartNew();
 
-                string stimulDir = Path.Combine(expDir, st.Uid);
-                string stimulFile = ResolveStimulusFile(stimulDir, st.Filename);
-                bool isVideo = IsVideoFile(stimulFile);
-                bool isImage = IsImageFile(stimulFile);
+                bool isScreenRecord = kind == StimulusKinds.ScreenRecord;
 
-                if (!isVideo && !isImage)
-                    throw new InvalidOperationException($"Неподдерживаемый тип стимула: {Path.GetFileName(stimulFile)}");
+                string? stimulFile = null;
+                bool isVideo = false;
+                bool isImage = false;
+
+                if (!isScreenRecord)
+                {
+                    string stimulDir = Path.Combine(expDir, st.Uid);
+                    stimulFile = ResolveStimulusFile(stimulDir, st.Filename);
+                    isVideo = IsVideoFile(stimulFile);
+                    isImage = IsImageFile(stimulFile);
+
+                    if (!isVideo && !isImage)
+                        throw new InvalidOperationException($"Неподдерживаемый тип стимула: {Path.GetFileName(stimulFile)}");
+                }
 
                 var stimulResDir = Path.Combine(resultDir, st.Uid);
                 Directory.CreateDirectory(stimulResDir);
+
 
                 // per-stim для трекера
                 var perStimPath = Path.Combine(stimulResDir, trackerUid);
@@ -1687,14 +1717,64 @@ public partial class MainWindow : Window
 
                     // ✅ 1) Запускаем стимул и заранее получаем Task ожидания конца стимула
                     Task waitStimulus;
+                    FfmpegRecorder? screenRecord = null;
+                    WindowState? prevWindowState = null;
 
-                    if (isVideo)
+                    if (isScreenRecord)
                     {
-                        waitStimulus = StartVideoWaitTask(stimulFile, ct); // ждать MediaEnded / или отмену
+                        // per-stim запись экрана -> results/<resultUid>/<stimUid>/stimul.mkv
+                        if (!string.IsNullOrWhiteSpace(ffmpegExe))
+                        {
+                            try
+                            {
+                                var outPath = Path.Combine(stimulResDir, "stimul.mkv");
+                                screenRecord = await FfmpegRecorder.StartDesktopAsync(ffmpegExe!, outPath);
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show(
+                                    "Не удалось запустить запись экрана для стимула SCREEN_RECORD.\n" + ex.Message,
+                                    "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            }
+                        }
+                        else if (!screenRecordFfmpegWarned)
+                        {
+                            screenRecordFfmpegWarned = true;
+                            MessageBox.Show(
+                                "Стимул SCREEN_RECORD требует ffmpeg, но ffmpeg не найден.\n" +
+                                "Запись этого стимула будет пропущена.",
+                                "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+
+                        // Для SCREEN_RECORD используем тот же механизм ожидания (таймаут или Next).
+                        if (st.NextTimeout)
+                        {
+                            // В режиме таймаута можно свернуть окно, чтобы оно не мешало на рабочем столе.
+                            // (Если нужен другой UX — скажешь, подправим.)
+                            try
+                            {
+                                prevWindowState = WindowState;
+                                WindowState = WindowState.Minimized;
+                            }
+                            catch { }
+
+                            waitStimulus = Task.Delay(Math.Max(0, st.TimeoutMs), ct);
+                        }
+                        else
+                        {
+                            ShowText("Запись экрана… (Space/Enter — следующий, Esc — выход)");
+                            _nextTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                            using var reg = ct.Register(() => _nextTcs.TrySetCanceled(ct));
+                            waitStimulus = _nextTcs.Task;
+                        }
+                    }
+                    else if (isVideo)
+                    {
+                        waitStimulus = StartVideoWaitTask(stimulFile!, ct); // ждать MediaEnded / или отмену
                     }
                     else
                     {
-                        ShowImage(stimulFile);
+                        ShowImage(stimulFile!);
 
                         if (st.NextTimeout)
                         {
@@ -1707,6 +1787,7 @@ public partial class MainWindow : Window
                             waitStimulus = _nextTcs.Task;
                         }
                     }
+
 
                     using var pollCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
@@ -1761,6 +1842,24 @@ public partial class MainWindow : Window
                         try { await pollTask; } catch { }
 
                         if (isVideo) StopVideo(); // ✅ обязательно перед следующим стимулом
+
+                        if (screenRecord != null)
+                        {
+                            try { await screenRecord.StopAsync(); } catch { }
+                        }
+
+                        if (prevWindowState != null)
+                        {
+                            try
+                            {
+                                WindowState = prevWindowState.Value;
+                                Activate();
+                            }
+                            catch { }
+                        }
+
+                        if (isScreenRecord)
+                            ShowText("");
                     }
                 }
 
