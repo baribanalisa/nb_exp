@@ -60,17 +60,29 @@ public partial class DeviceCheckWindow : Window
     private bool _allowCloseAfterCleanup;
 
     public DeviceCheckWindow(string expDir, ExperimentFile exp, CancellationToken externalCt)
-    {
-        InitializeComponent();
-        DataContext = Vm;
+{
+    InitializeComponent();
 
-        _expDir = expDir;
-        _exp = exp;
-        _externalCt = externalCt;
+    // Косметика для WPF на нестандартном DPI (125%/150%):
+    // - меньше "мыла" на шрифтах
+    // - ровнее границы/линии
+    UseLayoutRounding = true;
+    SnapsToDevicePixels = true;
+    TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+    TextOptions.SetTextRenderingMode(this, TextRenderingMode.ClearType);
+    TextOptions.SetTextHintingMode(this, TextHintingMode.Fixed);
+    RenderOptions.SetClearTypeHint(this, ClearTypeHint.Enabled);
 
-        Loaded += async (_, __) => await RunChecksAsync();
-        Closing += DeviceCheckWindow_Closing;
-    }
+    DataContext = Vm;
+
+    _expDir = expDir;
+    _exp = exp;
+    _externalCt = externalCt;
+
+    Loaded += async (_, __) => await RunChecksAsync();
+    Closing += DeviceCheckWindow_Closing;
+}
+
 
     private void DeviceCheckWindow_Closing(object? sender, CancelEventArgs e)
     {

@@ -7,8 +7,211 @@
         SizeToContent="Height"
         ResizeMode="CanMinimize"
         Width="900"
-        MaxWidth="1200">
-    <Grid Margin="12">
+        MaxWidth="1200"
+        FontFamily="Segoe UI"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        Background="{DynamicResource BgBrush}">
+
+
+    <Window.Resources>
+        <!-- ===== palette (как в MainWindow.xaml) ===== -->
+        <SolidColorBrush x:Key="BgBrush" Color="#FFF7F7F9"/>
+        <SolidColorBrush x:Key="CardBrush" Color="#FFFFFFFF"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#FF111827"/>
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#FF6B7280"/>
+        <SolidColorBrush x:Key="BorderBrushSoft" Color="#1A000000"/>
+
+        <SolidColorBrush x:Key="AccentBrush" Color="#2563EB"/>
+
+        <SolidColorBrush x:Key="GreenBrush" Color="#16A34A"/>
+        <SolidColorBrush x:Key="GreenBgBrush" Color="#E8F7EE"/>
+
+        <SolidColorBrush x:Key="YellowBrush" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="YellowBgBrush" Color="#FFFBEB"/>
+
+        <SolidColorBrush x:Key="RedBrush" Color="#DC2626"/>
+        <SolidColorBrush x:Key="RedBgBrush" Color="#FEF2F2"/>
+
+        <SolidColorBrush x:Key="GrayBrush" Color="#6B7280"/>
+        <SolidColorBrush x:Key="GrayBgBrush" Color="#F3F4F6"/>
+
+        <SolidColorBrush x:Key="HoverBrush" Color="#F3F4F6"/>
+        <SolidColorBrush x:Key="PressedBrush" Color="#E5E7EB"/>
+        <SolidColorBrush x:Key="PillBorderBrush" Color="#E5E7EB"/>
+
+        <!-- ===== common card style ===== -->
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="18"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+
+        <!-- ===== dialog buttons (как в topbar main) ===== -->
+        <Style x:Key="PillButton" TargetType="Button">
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource PillBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PressedBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryPillButton" TargetType="Button" BasedOn="{StaticResource PillButton}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.92"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Opacity" Value="0.85"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ===== modern DataGrid look ===== -->
+        <Style x:Key="ModernColumnHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#FFF3F4F6"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ModernCellStyle" TargetType="DataGridCell">
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ModernRowStyle" TargetType="DataGridRow">
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+
+        <Style x:Key="ModernDataGridStyle" TargetType="DataGrid">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="GridLinesVisibility" Value="None"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="CanUserResizeRows" Value="False"/>
+            <Setter Property="CanUserSortColumns" Value="False"/>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="SelectionUnit" Value="FullRow"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="AlternationCount" Value="2"/>
+            <Setter Property="AlternatingRowBackground" Value="#FFF9FAFB"/>
+            <Setter Property="ColumnHeaderStyle" Value="{StaticResource ModernColumnHeaderStyle}"/>
+            <Setter Property="CellStyle" Value="{StaticResource ModernCellStyle}"/>
+            <Setter Property="RowStyle" Value="{StaticResource ModernRowStyle}"/>
+        </Style>
+
+        <!-- ===== Status badge template (без овалов: скругление как у карточек/кнопок) ===== -->
+        <DataTemplate x:Key="StatusBadgeTemplate">
+            <Border x:Name="Badge"
+                    CornerRadius="6"
+                    Padding="10,4"
+                    BorderThickness="1"
+                    BorderBrush="{StaticResource BorderBrushSoft}"
+                    Background="{StaticResource YellowBgBrush}"
+                    HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- маленький маркер (квадратик со скруглением, не круг) -->
+                    <Border x:Name="Mark"
+                            Width="8"
+                            Height="8"
+                            CornerRadius="2"
+                            Background="{StaticResource YellowBrush}"
+                            Margin="0,0,8,0"/>
+                    <TextBlock x:Name="Txt"
+                               Text="{Binding Status}"
+                               Foreground="{StaticResource YellowBrush}"
+                               FontWeight="SemiBold"/>
+                </StackPanel>
+            </Border>
+
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Status}" Value="ОК">
+                    <Setter TargetName="Badge" Property="Background" Value="{StaticResource GreenBgBrush}"/>
+                    <Setter TargetName="Txt" Property="Foreground" Value="{StaticResource GreenBrush}"/>
+                    <Setter TargetName="Mark" Property="Background" Value="{StaticResource GreenBrush}"/>
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding Status}" Value="Ошибка">
+                    <Setter TargetName="Badge" Property="Background" Value="{StaticResource RedBgBrush}"/>
+                    <Setter TargetName="Txt" Property="Foreground" Value="{StaticResource RedBrush}"/>
+                    <Setter TargetName="Mark" Property="Background" Value="{StaticResource RedBrush}"/>
+                </DataTrigger>
+
+                <!-- “не проверяем” -->
+                <DataTrigger Binding="{Binding Status}" Value="—">
+                    <Setter TargetName="Badge" Property="Background" Value="{StaticResource GrayBgBrush}"/>
+                    <Setter TargetName="Txt" Property="Foreground" Value="{StaticResource GrayBrush}"/>
+                    <Setter TargetName="Mark" Property="Background" Value="{StaticResource GrayBrush}"/>
+                </DataTrigger>
+
+                <!-- ожидание/проверка остаются жёлтыми (дефолт) -->
+                <DataTrigger Binding="{Binding Status}" Value="Ожидание">
+                    <Setter TargetName="Badge" Property="Background" Value="{StaticResource YellowBgBrush}"/>
+                    <Setter TargetName="Txt" Property="Foreground" Value="{StaticResource YellowBrush}"/>
+                    <Setter TargetName="Mark" Property="Background" Value="{StaticResource YellowBrush}"/>
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding Status}" Value="Проверка…">
+                    <Setter TargetName="Badge" Property="Background" Value="{StaticResource YellowBgBrush}"/>
+                    <Setter TargetName="Txt" Property="Foreground" Value="{StaticResource YellowBrush}"/>
+                    <Setter TargetName="Mark" Property="Background" Value="{StaticResource YellowBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -16,46 +219,71 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0"
-                   Text="Перед запуском проверим подключение устройств из эксперимента."
-                   Margin="0,0,0,10"/>
+        <!-- Header card -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Проверка устройств"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}"/>
+                <TextBlock Text="Перед запуском проверим подключение устройств из эксперимента."
+                           Margin="0,6,0,0"
+                           Foreground="{StaticResource MutedTextBrush}"/>
+            </StackPanel>
+        </Border>
 
-        <DataGrid Grid.Row="1"
-                  ItemsSource="{Binding Devices}"
-                  AutoGenerateColumns="False"
-                  IsReadOnly="True"
-                  HeadersVisibility="Column"
-                  MinWidth="600"
-                  MinHeight="180"
-                  Margin="0,0,0,10">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Устройство" Binding="{Binding Name}" Width="2*"/>
-                <DataGridTextColumn Header="DevType" Binding="{Binding DevType}" Width="140"/>
-                <DataGridTextColumn Header="Статус" Binding="{Binding Status}" Width="120"/>
-                <DataGridTextColumn Header="Причина / детали" Binding="{Binding Details}" Width="3*">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="TextWrapping" Value="Wrap"/>
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
+        <!-- Devices table card -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorderStyle}" Padding="0" Margin="0,0,0,12">
+            <DataGrid ItemsSource="{Binding Devices}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      Style="{StaticResource ModernDataGridStyle}"
+                      MinHeight="180"
+                      Margin="0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Устройство" Binding="{Binding Name}" Width="2*"/>
 
-            </DataGrid.Columns>
-        </DataGrid>
+                    <DataGridTextColumn Header="DevType" Binding="{Binding DevType}" Width="160">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
 
-        <Border x:Name="ShimmerChartsPanel" Grid.Row="2" 
-                BorderBrush="#CCCCCC" BorderThickness="1" 
-                CornerRadius="6" Padding="12" Margin="0,0,0,10"
+                    <DataGridTemplateColumn Header="Статус" Width="150"
+                                            CellTemplate="{StaticResource StatusBadgeTemplate}"/>
+
+                    <DataGridTextColumn Header="Причина / детали" Binding="{Binding Details}" Width="3*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Shimmer charts card -->
+        <Border x:Name="ShimmerChartsPanel"
+                Grid.Row="2"
+                Style="{StaticResource CardBorderStyle}"
+                Margin="0,0,0,12"
                 Visibility="Collapsed">
-                        <StackPanel>
-                <TextBlock Text="Сигналы Shimmer в реальном времени" FontWeight="Bold" Margin="0,0,0,6"/>
+            <StackPanel>
+                <TextBlock Text="Сигналы Shimmer в реальном времени"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}"
+                           Margin="0,0,0,6"/>
 
                 <TextBlock x:Name="ShimmerBatteryText"
                            Text="Батарея Shimmer: —"
-                           Margin="0,0,0,10"/>
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Margin="0,0,0,12"/>
 
                 <Grid>
-
                     <Grid.RowDefinitions>
                         <RowDefinition Height="140"/>
                         <RowDefinition Height="140"/>
@@ -73,10 +301,28 @@
             </StackPanel>
         </Border>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Повторить" Width="110" Margin="0,0,8,0" Click="Retry_Click"/>
-            <Button Content="Отмена" Width="110" Margin="0,0,8,0" Click="Cancel_Click"/>
-            <Button x:Name="StartBtn" Content="Запустить" Width="110" IsEnabled="False" Click="Start_Click"/>
+        <!-- Footer buttons -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button Content="Повторить"
+                    MinWidth="120"
+                    Margin="0,0,10,0"
+                    Style="{StaticResource PillButton}"
+                    Click="Retry_Click"/>
+
+            <Button Content="Отмена"
+                    MinWidth="120"
+                    Margin="0,0,10,0"
+                    Style="{StaticResource PillButton}"
+                    Click="Cancel_Click"/>
+
+            <Button x:Name="StartBtn"
+                    Content="Запустить"
+                    MinWidth="120"
+                    IsEnabled="False"
+                    Style="{StaticResource PrimaryPillButton}"
+                    Click="Start_Click"/>
         </StackPanel>
     </Grid>
 </Window>
