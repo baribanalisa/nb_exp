@@ -1237,7 +1237,10 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             ExitRunMode();
-            MessageBox.Show(ex.ToString(), "Experiment error", MessageBoxButton.OK, MessageBoxImage.Error);
+            var msg = ex.Message;
+            if (ex is FileNotFoundException or DirectoryNotFoundException)
+                msg = $"Не найден стимул.\n\n{ex.Message}";
+            MessageBox.Show(msg, "Experiment error", MessageBoxButton.OK, MessageBoxImage.Error);
 
             var saved = PromptSavePendingResult("Ошибка во время эксперимента");
             vm.StatusText = saved ? "Сохранён неполный результат (после ошибки)" : "Ошибка выполнения";
@@ -2312,7 +2315,18 @@ public partial class MainWindow : Window
     private static string ResolveStimulusFile(string stimulDir, string? expectedFilename)
     {
         if (!Directory.Exists(stimulDir))
+        {
+            var expDir = Directory.GetParent(stimulDir)?.FullName;
+            if (!string.IsNullOrWhiteSpace(expDir))
+            {
+                var directFile = TryResolveStimulusFileInDir(expDir, expectedFilename)
+                    ?? TryResolveStimulusFileInDir(expDir, Path.GetFileName(stimulDir));
+                if (!string.IsNullOrWhiteSpace(directFile))
+                    return directFile;
+            }
+
             throw new DirectoryNotFoundException($"Stimulus folder not found: {stimulDir}");
+        }
 
         if (string.IsNullOrWhiteSpace(expectedFilename))
             throw new FileNotFoundException("Stimulus filename is empty", stimulDir);
@@ -2371,6 +2385,29 @@ public partial class MainWindow : Window
                 ?? files[0];
 
         return chosen;
+    }
+
+    private static string? TryResolveStimulusFileInDir(string dir, string? expectedFilename)
+    {
+        if (string.IsNullOrWhiteSpace(expectedFilename))
+            return null;
+
+        var expectedPath = Path.Combine(dir, expectedFilename);
+        if (File.Exists(expectedPath))
+            return expectedPath;
+
+        string unescaped;
+        try { unescaped = Uri.UnescapeDataString(expectedFilename); }
+        catch { unescaped = expectedFilename; }
+
+        if (!string.Equals(unescaped, expectedFilename, StringComparison.Ordinal))
+        {
+            var unescapedPath = Path.Combine(dir, unescaped);
+            if (File.Exists(unescapedPath))
+                return unescapedPath;
+        }
+
+        return null;
     }
 
     private static bool IsImageFile(string path)
