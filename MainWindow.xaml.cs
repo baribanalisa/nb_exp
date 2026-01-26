@@ -22,6 +22,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Data;
 using System.ComponentModel;
+using System.Windows.Interop;
 // === ИСПРАВЛЕНИЕ КОНФЛИКТОВ (WPF vs WinForms) ===
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
@@ -74,6 +75,10 @@ public partial class MainWindow : Window
     private string? _audioDeviceName;
 
     private Task? _activeRunTask; // чтобы при закрытии дождаться завершения и закрытия файлов
+    private HwndSource? _hwndSource;
+    private const int HotkeyNextId = 0xA001;
+    private const int HotkeyExitId = 0xA002;
+    private const int WmHotkey = 0x0312;
 
     private void ForceNextStimulus() => _nextTcs?.TrySetResult(true);
     private bool _closeFlowInProgress;
@@ -83,6 +88,93 @@ public partial class MainWindow : Window
         _abortedByUser = true;
         try { _runCts?.Cancel(); } catch { }
         try { _nextTcs?.TrySetCanceled(); } catch { }
+    }
+
+    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, int vk);
+    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    private IDisposable? BeginGlobalHotkeys()
+    {
+        if (_hwndSource == null)
+            return null;
+
+        var hwnd = _hwndSource.Handle;
+        if (hwnd == IntPtr.Zero)
+            return null;
+
+        UnregisterGlobalHotkeys();
+
+        var nextVk = KeyInterop.VirtualKeyFromKey(_hkNext.Key);
+        var exitVk = KeyInterop.VirtualKeyFromKey(_hkExit.Key);
+        var nextMods = ToHotkeyModifiers(_hkNext.Modifiers);
+        var exitMods = ToHotkeyModifiers(_hkExit.Modifiers);
+
+        bool nextOk = nextVk != 0 && RegisterHotKey(hwnd, HotkeyNextId, nextMods, nextVk);
+        bool exitOk = exitVk != 0 && RegisterHotKey(hwnd, HotkeyExitId, exitMods, exitVk);
+
+        if (!nextOk && !exitOk)
+            return null;
+
+        return new HotkeyScope(this);
+    }
+
+    private void UnregisterGlobalHotkeys()
+    {
+        if (_hwndSource == null)
+            return;
+
+        var hwnd = _hwndSource.Handle;
+        if (hwnd == IntPtr.Zero)
+            return;
+
+        try { UnregisterHotKey(hwnd, HotkeyNextId); } catch { }
+        try { UnregisterHotKey(hwnd, HotkeyExitId); } catch { }
+    }
+
+    private static uint ToHotkeyModifiers(ModifierKeys mods)
+    {
+        uint res = 0;
+        if (mods.HasFlag(ModifierKeys.Alt)) res |= 0x0001;
+        if (mods.HasFlag(ModifierKeys.Control)) res |= 0x0002;
+        if (mods.HasFlag(ModifierKeys.Shift)) res |= 0x0004;
+        if (mods.HasFlag(ModifierKeys.Windows)) res |= 0x0008;
+        return res;
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WmHotkey)
+        {
+            var id = wParam.ToInt32();
+            if (id == HotkeyNextId)
+            {
+                ForceNextStimulus();
+                handled = true;
+            }
+            else if (id == HotkeyExitId)
+            {
+                AbortExperimentFromUi();
+                handled = true;
+            }
+        }
+        return IntPtr.Zero;
+    }
+
+    private sealed class HotkeyScope : IDisposable
+    {
+        private MainWindow? _owner;
+
+        public HotkeyScope(MainWindow owner)
+        {
+            _owner = owner;
+        }
+
+        public void Dispose()
+        {
+            if (_owner == null) return;
+            _owner.UnregisterGlobalHotkeys();
+            _owner = null;
+        }
     }
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
@@ -759,6 +851,13 @@ public partial class MainWindow : Window
         StimImage.Source = null;
         StimImage.Visibility = Visibility.Collapsed;
 
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
+        _hwndSource?.AddHook(WndProc);
     }
     private bool _isShuttingDown;
 
@@ -1719,6 +1818,7 @@ public partial class MainWindow : Window
                     Task waitStimulus;
                     FfmpegRecorder? screenRecord = null;
                     WindowState? prevWindowState = null;
+                    IDisposable? hotkeyScope = null;
 
                     if (isScreenRecord)
                     {
@@ -1746,23 +1846,22 @@ public partial class MainWindow : Window
                                 "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
                         }
 
-                        // Для SCREEN_RECORD используем тот же механизм ожидания (таймаут или Next).
+                        // Для SCREEN_RECORD используем тот же механизм ожидания (таймаут или Next),
+                        // но окно сворачиваем на всё время записи.
+                        hotkeyScope = BeginGlobalHotkeys();
+                        try
+                        {
+                            prevWindowState = WindowState;
+                            WindowState = WindowState.Minimized;
+                        }
+                        catch { }
+
                         if (st.NextTimeout)
                         {
-                            // В режиме таймаута можно свернуть окно, чтобы оно не мешало на рабочем столе.
-                            // (Если нужен другой UX — скажешь, подправим.)
-                            try
-                            {
-                                prevWindowState = WindowState;
-                                WindowState = WindowState.Minimized;
-                            }
-                            catch { }
-
                             waitStimulus = Task.Delay(Math.Max(0, st.TimeoutMs), ct);
                         }
                         else
                         {
-                            ShowText("Запись экрана… (Space/Enter — следующий, Esc — выход)");
                             _nextTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                             using var reg = ct.Register(() => _nextTcs.TrySetCanceled(ct));
                             waitStimulus = _nextTcs.Task;
@@ -1847,6 +1946,8 @@ public partial class MainWindow : Window
                         {
                             try { await screenRecord.StopAsync(); } catch { }
                         }
+
+                        hotkeyScope?.Dispose();
 
                         if (prevWindowState != null)
                         {
@@ -2531,6 +2632,10 @@ public partial class MainWindow : Window
     {
         try
         {
+            UnregisterGlobalHotkeys();
+            _hwndSource?.RemoveHook(WndProc);
+            _hwndSource = null;
+
             // Wait for any active run task to complete
             if (_activeRunTask != null)
             {
