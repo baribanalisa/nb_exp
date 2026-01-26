@@ -595,12 +595,14 @@
 
                         <Button x:Name="PlayPauseBtn"
                                 Grid.Column="0"
+                                Style="{StaticResource PillButtonStyle}"
                                 Width="110"
-                                Padding="12,8"
+                                Padding="14,0"
                                 Click="PlayPauseBtn_Click"
                                 IsEnabled="False">
-                            ▶ Воспроизвести
+                            ▶ Play
                         </Button>
+
 
                         <Slider x:Name="TimeSlider"
                                 Grid.Column="2"

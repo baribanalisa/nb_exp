@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vlc="clr-namespace:LibVLCSharp.WPF;assembly=LibVLCSharp.WPF"
         xmlns:local="clr-namespace:NeuroBureau.Experiment"
-        Title="Neurobureau - Experiment"
+        Title="Neurobureau — Эксперимент"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
         KeyDown="Window_KeyDown"
@@ -458,7 +458,7 @@
                             <TextBlock Text="N" Foreground="White" FontWeight="SemiBold"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="Neurobureau - Experiment"
+                        <TextBlock Text="Neurobureau — Эксперимент"
                                    Margin="10,0,0,0"
                                    FontSize="16"
                                    FontWeight="SemiBold"
@@ -548,13 +548,13 @@
 
 
                     <TextBlock Grid.Row="0"
-                            Text="Experiments"
+                            Text="Эксперименты"
                             FontSize="22"
                             FontWeight="SemiBold"
                             Foreground="{StaticResource TextBrush}"/>
 
                                         <TextBlock Grid.Row="1"
-                            Text="Select an experiment to view details"
+                            Text="Выберите эксперимент, чтобы увидеть детали"
                             Margin="0,6,0,14"
                             Foreground="{StaticResource MutedTextBrush}"/>
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14">
@@ -651,7 +651,7 @@
                   
 
                     <!-- ===== Description: тут показываем то, что сейчас справа в Experiments (Devices + Stimuli) ===== -->
-                    <TabItem Header="Stimuli">
+                    <TabItem Header="Стимулы">
                         <ScrollViewer VerticalScrollBarVisibility="Auto"
                                     HorizontalScrollBarVisibility="Disabled">
                             <StackPanel>
@@ -668,7 +668,7 @@
                                                         FontFamily="Segoe MDL2 Assets"
                                                         Foreground="{StaticResource MutedTextBrush}"
                                                         Margin="0,1,8,0"/>
-                                                <TextBlock Text="Stimuli"
+                                                 <TextBlock Text="Стимулы"
                                                         FontSize="16"
                                                         FontWeight="SemiBold"
                                                         Foreground="{StaticResource TextBrush}"/>
@@ -756,7 +756,7 @@
 
 
                     <!-- ===== Results: тут будет таблица результатов (пока каркас) ===== -->
-                    <TabItem Header="Results">
+                    <TabItem Header="Результаты">
                         <Grid Background="{StaticResource BgBrush}" Margin="24">
                             <Border Style="{StaticResource CardBorderStyle}">
                                 <DockPanel>
@@ -771,7 +771,7 @@
                                         <TextBlock FontSize="16"
                                                 FontWeight="SemiBold"
                                                 Foreground="{StaticResource TextBrush}"
-                                                Text="Results"
+                                                Text="Результаты"
                                                 VerticalAlignment="Center"/>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
