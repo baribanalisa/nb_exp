@@ -1573,7 +1573,7 @@ public partial class AnalysisWindow : Window
                 bool isVideo;
                 bool isImage;
 
-                if (kind == StimulusKinds.ScreenRecord)
+                if (StimulusKinds.IsScreenRecord(kind))
                 {
                     // SCREEN_RECORD хранится в results/<primaryResultUid>/<stimUid>/stimul.mkv
                     path = !string.IsNullOrWhiteSpace(_primaryResultUid)
@@ -1594,7 +1594,7 @@ public partial class AnalysisWindow : Window
 
                 var bg = TryParseRgbaBrush(st.Rgba);
 
-                var title = kind == StimulusKinds.ScreenRecord
+                var title = StimulusKinds.IsScreenRecord(kind)
                     ? (!string.IsNullOrWhiteSpace(st.Filename)
                         ? Path.GetFileName(st.Filename)
                         : "Запись экрана")
@@ -1602,7 +1602,7 @@ public partial class AnalysisWindow : Window
                         ? Path.GetFileName(st.Filename)
                         : (!string.IsNullOrWhiteSpace(st.Uid) ? st.Uid : "stimulus"));
 
-                var subtitle = kind == StimulusKinds.ScreenRecord
+                var subtitle = StimulusKinds.IsScreenRecord(kind)
                     ? (hasFile ? "Запись экрана" : "Запись экрана (файл не найден)")
                     : (isVideo ? "Видео" :
                     isImage ? "Изображение" :

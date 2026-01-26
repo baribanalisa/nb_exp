@@ -104,5 +104,11 @@ public static class StimulusKinds
     public const int FileStimulus = 1;
 
     // Новый тип: запись экрана в results/<resultUid>/<stimUid>/stimul.mkv
-    public const int ScreenRecord = 2;
+    public const int ScreenRecord = 3;
+
+    // Ранние версии использовали значение 2 для SCREEN_RECORD.
+    public const int LegacyScreenRecord = 2;
+
+    public static bool IsScreenRecord(int kind)
+        => kind == ScreenRecord || kind == LegacyScreenRecord;
 }

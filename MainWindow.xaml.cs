@@ -1506,7 +1506,7 @@ public partial class MainWindow : Window
         bool needFfmpeg =
             _recordDesktop ||
             _recordCamera ||
-            stimulsRun.Any(s => (s.Kind ?? 0) == StimulusKinds.ScreenRecord);
+            stimulsRun.Any(s => StimulusKinds.IsScreenRecord(s.Kind ?? 0));
 
         if (needFfmpeg)
         {
@@ -1757,7 +1757,7 @@ public partial class MainWindow : Window
 
                 sw ??= Stopwatch.StartNew();
 
-                bool isScreenRecord = kind == StimulusKinds.ScreenRecord;
+                bool isScreenRecord = StimulusKinds.IsScreenRecord(kind);
 
                 string? stimulFile = null;
                 bool isVideo = false;
