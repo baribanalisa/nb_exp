@@ -35,7 +35,7 @@ public sealed class MultiExportService
 
         _trackerUid =
             exp.Devices.FirstOrDefault(d => IsEyeTrackerType(d.DevType))?.Uid
-            ?? throw new InvalidOperationException("В exp.json не найден ай-трекер (dev-type PathFinder/Gazepoint/...).");
+            ?? throw new InvalidOperationException("В exp.json не найден ай-трекер (тип устройства PathFinder/Gazepoint/...).");
 
         _mouseKbdUid =
             exp.Devices.FirstOrDefault(d => string.Equals(d.DevType, "MouseKeyboard", StringComparison.OrdinalIgnoreCase))?.Uid;
@@ -79,10 +79,10 @@ public sealed class MultiExportService
 
         // Ограничения режимов (дублируем защиту VM)
         if (options.Mode == MultiExportMode.AllInOne && (options.ExportRaw || options.ExportSource))
-            throw new InvalidOperationException("В режиме AllInOne запрещены Raw/Source.");
+            throw new InvalidOperationException("В режиме «Все в одном» запрещены сырые/исходные данные.");
 
         if (options.ExportEdf && (!_hasEeg || options.Mode != MultiExportMode.SeparateFiles))
-            throw new InvalidOperationException("EDF доступен только в режиме SeparateFiles и только если в эксперименте есть EEG.");
+            throw new InvalidOperationException("EDF доступен только в режиме «Отдельные файлы» и только если в эксперименте есть ЭЭГ.");
 
         var now = DateTime.Now;
 
@@ -112,7 +112,7 @@ public sealed class MultiExportService
                 break;
 
             default:
-                throw new ArgumentOutOfRangeException(nameof(options.Mode), options.Mode, "Unknown mode");
+                throw new ArgumentOutOfRangeException(nameof(options.Mode), options.Mode, "Неизвестный режим");
         }
 
         Report("Мультиэкспорт: готово");
@@ -702,7 +702,7 @@ public sealed class MultiExportService
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
         File.Copy(src, dst, overwrite: true);
-        report($"Image copied: {Path.GetFileName(dst)}");
+        report($"Изображение скопировано: {Path.GetFileName(dst)}");
     }
 
     // ===== EDF (пока только копируем, если уже есть) =====
@@ -730,7 +730,7 @@ public sealed class MultiExportService
             File.Copy(src, dst, overwrite: true);
         }
 
-        report($"EDF copied: {edfs.Count} file(s) for result {rr.Uid}");
+        report($"EDF скопировано: {edfs.Count} файл(ов) для результата {rr.Uid}");
     }
 
     // ===== helpers =====

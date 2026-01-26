@@ -24,11 +24,11 @@
         <TextBox Grid.Row="1" Grid.Column="1" Margin="6,4,0,4" Text="{Binding Age, UpdateSourceTrigger=PropertyChanged}"/>
 
         <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Пол"/>
-        <ComboBox Grid.Row="2" Grid.Column="1" Margin="6,4,0,4" SelectedValue="{Binding Sex}">
-            <ComboBoxItem Content=""/>
-            <ComboBoxItem Content="f"/>
-            <ComboBoxItem Content="m"/>
-            <ComboBoxItem Content="other"/>
+        <ComboBox Grid.Row="2" Grid.Column="1" Margin="6,4,0,4" SelectedValue="{Binding Sex}" SelectedValuePath="Tag">
+            <ComboBoxItem Content="—" Tag=""/>
+            <ComboBoxItem Content="Женский" Tag="f"/>
+            <ComboBoxItem Content="Мужской" Tag="m"/>
+            <ComboBoxItem Content="Другое" Tag="other"/>
         </ComboBox>
 
         <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Top" Text="Комментарий"/>
@@ -41,4 +41,3 @@
         </StackPanel>
     </Grid>
 </Window>
-

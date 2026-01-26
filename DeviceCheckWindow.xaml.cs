@@ -296,7 +296,7 @@ public partial class DeviceCheckWindow : Window
         {
             var row = Vm.FindRow(shimmerDev);
             row.Status = "Проверка…";
-            row.Details = "Поднимаю Shimmer.exe и подключаюсь по BT…";
+            row.Details = "Запускаю Shimmer.exe и подключаюсь по BT…";
 
             // если при повторной проверке уже что-то было — прибьём
             if (ShimmerClient != null)
@@ -318,7 +318,7 @@ public partial class DeviceCheckWindow : Window
                 ShimmerDevice = shimmerDev;
 
                 row.Status = "ОК";
-                row.Details = $"Подключено: BT \"{resolved.btName}\", port {resolved.port}.";
+            row.Details = $"Подключено: BT \"{resolved.btName}\", порт {resolved.port}.";
                 
                 StartShimmerCharts();
             }
@@ -354,7 +354,7 @@ public partial class DeviceCheckWindow : Window
             else
             {
                 row.Status = "—";
-                row.Details = "Автопроверка не реализована для этого DevType.";
+                row.Details = "Автопроверка не реализована для этого типа устройства.";
             }
         }
 
@@ -403,13 +403,13 @@ public partial class DeviceCheckWindow : Window
             throw new InvalidOperationException("ShimmerGSR есть в exp.json, но не найден в глобальном sensors.json.");
 
         if (string.IsNullOrWhiteSpace(globalShimmer.Params))
-            throw new InvalidOperationException("У глобального ShimmerGSR нет params (нужны {name,port}).");
+            throw new InvalidOperationException("У глобального ShimmerGSR нет параметров params (нужны {name,port}).");
 
         string btName;
         int port;
         using (var doc = JsonDocument.Parse(globalShimmer.Params))
         {
-            btName = doc.RootElement.GetProperty("name").GetString() ?? throw new InvalidOperationException("Shimmer params.name пустой");
+            btName = doc.RootElement.GetProperty("name").GetString() ?? throw new InvalidOperationException("Параметр Shimmer params.name пустой");
             port = doc.RootElement.GetProperty("port").GetInt32();
         }
 
@@ -593,7 +593,7 @@ public partial class DeviceCheckWindow : Window
         {
             var min = Math.Max(0, hr.Min(p => p.Value));
             var max = Math.Min(200, hr.Max(p => p.Value));
-            HrChart.SetData(hr, xMin, xMax, min - 10, max + 10, double.NaN, "Пульс (HR)", null, "уд/мин");
+            HrChart.SetData(hr, xMin, xMax, min - 10, max + 10, double.NaN, "Пульс (ЧСС)", null, "уд/мин");
         }
 
         if (ppg.Count > 0)

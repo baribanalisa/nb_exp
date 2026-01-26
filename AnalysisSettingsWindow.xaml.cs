@@ -102,57 +102,57 @@ public partial class AnalysisSettingsWindow : Window
             Settings.NoiseReduction = (NoiseCombo.SelectedItem is NoiseReductionType nr) ? nr : NoiseReductionType.None;
 
             Settings.WindowSize = ParseInt(WindowSizeBox.Text, min: 1, max: 999, name: "Окно фильтра");
-            Settings.GapWindowSize = ParseInt(GapWindowSizeBox.Text, min: 0, max: 999, name: "Gap filling");
-            Settings.MaxSpeedDegPerSec = ParseDouble(MaxSpeedBox.Text, min: 0, max: 1_000_000, name: "MaxSpeed");
+            Settings.GapWindowSize = ParseInt(GapWindowSizeBox.Text, min: 0, max: 999, name: "Заполнение разрывов");
+            Settings.MaxSpeedDegPerSec = ParseDouble(MaxSpeedBox.Text, min: 0, max: 1_000_000, name: "Макс. скорость");
 
             if (AlgoTabs.SelectedIndex == 0)
             {
                 Settings.Algorithm = FixationAlgorithm.Idt;
-                Settings.IdtDispersionThresholdPx = ParseDouble(IdtDispersionBox.Text, min: 0.1, max: 1_000_000, name: "DispersionThreshold");
-                Settings.IdtMinDurationMs = ParseInt(IdtMinDurationBox.Text, min: 1, max: 600_000, name: "MinDuration");
-                Settings.IdtWindowMs = ParseInt(IdtWindowBox.Text, min: 1, max: 600_000, name: "MinWindow");
+                Settings.IdtDispersionThresholdPx = ParseDouble(IdtDispersionBox.Text, min: 0.1, max: 1_000_000, name: "Порог дисперсии");
+                Settings.IdtMinDurationMs = ParseInt(IdtMinDurationBox.Text, min: 1, max: 600_000, name: "Мин. длительность");
+                Settings.IdtWindowMs = ParseInt(IdtWindowBox.Text, min: 1, max: 600_000, name: "Мин. окно");
             }
             else
             {
                 Settings.Algorithm = FixationAlgorithm.Ivt;
-                Settings.IvtSpeedFixDegPerSec = ParseDouble(IvtSpeedFixBox.Text, min: 0.1, max: 1_000_000, name: "SpeedFix");
-                Settings.IvtMinDurationMs = ParseInt(IvtMinDurationBox.Text, min: 1, max: 600_000, name: "MinDuration");
-                Settings.IvtMergeTimeMs = ParseInt(IvtMergeTimeBox.Text, min: 0, max: 600_000, name: "MergeTime");
-                Settings.IvtMergeAngleDeg = ParseDouble(IvtMergeAngleBox.Text, min: 0, max: 180, name: "MergeAngle");
+                Settings.IvtSpeedFixDegPerSec = ParseDouble(IvtSpeedFixBox.Text, min: 0.1, max: 1_000_000, name: "Порог скорости");
+                Settings.IvtMinDurationMs = ParseInt(IvtMinDurationBox.Text, min: 1, max: 600_000, name: "Мин. длительность");
+                Settings.IvtMergeTimeMs = ParseInt(IvtMergeTimeBox.Text, min: 0, max: 600_000, name: "Время объединения");
+                Settings.IvtMergeAngleDeg = ParseDouble(IvtMergeAngleBox.Text, min: 0, max: 180, name: "Угол объединения");
             }
 
             // Сохранение общих настроек визуализации
-            VisualizationSettings.MinRadius = ParseDouble(VisMinRadiusBox.Text, min: 1, max: 2_000, name: "Min radius");
-            VisualizationSettings.MaxRadius = ParseDouble(VisMaxRadiusBox.Text, min: VisualizationSettings.MinRadius, max: 5_000, name: "Max radius");
-            VisualizationSettings.MaxDurationSec = ParseDouble(VisMaxDurationBox.Text, min: 0.01, max: 10_000, name: "Max duration");
-            VisualizationSettings.LineWidth = ParseDouble(VisLineWidthBox.Text, min: 0.1, max: 200, name: "Line width");
-            VisualizationSettings.Alpha = ParseDouble(VisAlphaBox.Text, min: 0.0, max: 1.0, name: "Alpha");
+            VisualizationSettings.MinRadius = ParseDouble(VisMinRadiusBox.Text, min: 1, max: 2_000, name: "Мин. радиус");
+            VisualizationSettings.MaxRadius = ParseDouble(VisMaxRadiusBox.Text, min: VisualizationSettings.MinRadius, max: 5_000, name: "Макс. радиус");
+            VisualizationSettings.MaxDurationSec = ParseDouble(VisMaxDurationBox.Text, min: 0.01, max: 10_000, name: "Макс. длительность");
+            VisualizationSettings.LineWidth = ParseDouble(VisLineWidthBox.Text, min: 0.1, max: 200, name: "Толщина линии");
+            VisualizationSettings.Alpha = ParseDouble(VisAlphaBox.Text, min: 0.0, max: 1.0, name: "Прозрачность");
             VisualizationSettings.FontFamily = string.IsNullOrWhiteSpace(VisFontFamilyBox.Text)
                 ? "Segoe UI"
                 : VisFontFamilyBox.Text.Trim();
-            VisualizationSettings.FontSize = ParseDouble(VisFontSizeBox.Text, min: 6, max: 200, name: "Font size");
+            VisualizationSettings.FontSize = ParseDouble(VisFontSizeBox.Text, min: 6, max: 200, name: "Размер шрифта");
 
                         // === НОВОЕ: Сохранение настроек Пчелиного роя ===
-            VisualizationSettings.BeeRadius = ParseDouble(BeeRadiusBox.Text, min: 1, max: 2000, name: "Bee Radius");
-            VisualizationSettings.BeeLineWidth = ParseDouble(BeeLineBox.Text, min: 0.1, max: 200, name: "Bee Line Width");
+            VisualizationSettings.BeeRadius = ParseDouble(BeeRadiusBox.Text, min: 1, max: 2000, name: "Радиус роя");
+            VisualizationSettings.BeeLineWidth = ParseDouble(BeeLineBox.Text, min: 0.1, max: 200, name: "Толщина линии роя");
             // ================================================
 
             // === КГР: сохранение фильтра ===
             VisualizationSettings.KgrFilterEnabled = KgrFilterEnabledCheck.IsChecked == true;
 
             VisualizationSettings.KgrUseMedianFilter = KgrUseMedianCheck.IsChecked == true;
-            VisualizationSettings.KgrMedianWindowSec = ParseDouble(KgrMedianWindowSecBox.Text, min: 0, max: 60, name: "KGR median window (sec)");
+            VisualizationSettings.KgrMedianWindowSec = ParseDouble(KgrMedianWindowSecBox.Text, min: 0, max: 60, name: "Окно медианы КГР (с)");
 
             VisualizationSettings.KgrUseEmaFilter = KgrUseEmaCheck.IsChecked == true;
-            VisualizationSettings.KgrSrEmaTauSec = ParseDouble(KgrSrTauSecBox.Text, min: 0, max: 600, name: "KGR SR tau (sec)");
-            VisualizationSettings.KgrScEmaTauSec = ParseDouble(KgrScTauSecBox.Text, min: 0, max: 600, name: "KGR SC tau (sec)");
-            VisualizationSettings.KgrHrEmaTauSec = ParseDouble(KgrHrTauSecBox.Text, min: 0, max: 600, name: "KGR HR tau (sec)");
-            VisualizationSettings.KgrPpgEmaTauSec = ParseDouble(KgrPpgTauSecBox.Text, min: 0, max: 600, name: "KGR PPG tau (sec)");
+            VisualizationSettings.KgrSrEmaTauSec = ParseDouble(KgrSrTauSecBox.Text, min: 0, max: 600, name: "τ SR КГР (с)");
+            VisualizationSettings.KgrScEmaTauSec = ParseDouble(KgrScTauSecBox.Text, min: 0, max: 600, name: "τ SC КГР (с)");
+            VisualizationSettings.KgrHrEmaTauSec = ParseDouble(KgrHrTauSecBox.Text, min: 0, max: 600, name: "τ ЧСС КГР (с)");
+            VisualizationSettings.KgrPpgEmaTauSec = ParseDouble(KgrPpgTauSecBox.Text, min: 0, max: 600, name: "τ PPG КГР (с)");
 
             VisualizationSettings.KgrClampHr = KgrClampHrCheck.IsChecked == true;
-            VisualizationSettings.KgrHrMin = ParseDouble(KgrHrMinBox.Text, min: 0, max: 1000, name: "KGR HR min");
-            VisualizationSettings.KgrHrMax = ParseDouble(KgrHrMaxBox.Text, min: 0, max: 1000, name: "KGR HR max");
-            VisualizationSettings.KgrHrMaxDeltaPerSec = ParseDouble(KgrHrMaxDeltaBox.Text, min: 0, max: 1000, name: "KGR HR max delta (bpm/sec)");
+            VisualizationSettings.KgrHrMin = ParseDouble(KgrHrMinBox.Text, min: 0, max: 1000, name: "Мин. ЧСС КГР");
+            VisualizationSettings.KgrHrMax = ParseDouble(KgrHrMaxBox.Text, min: 0, max: 1000, name: "Макс. ЧСС КГР");
+            VisualizationSettings.KgrHrMaxDeltaPerSec = ParseDouble(KgrHrMaxDeltaBox.Text, min: 0, max: 1000, name: "Макс. скачок ЧСС (уд/мин/с)");
             // ==============================
 
 
@@ -163,9 +163,9 @@ public partial class AnalysisSettingsWindow : Window
             VisualizationSettings.HeatmapMapType = HeatmapTypeCombo.SelectedItem is HeatmapType ht
                 ? ht
                 : HeatmapType.Heatmap;
-            VisualizationSettings.HeatmapRadius = ParseDouble(HeatmapRadiusBox.Text, min: 1, max: 2000, name: "Heatmap Radius");
-            VisualizationSettings.HeatmapInitialOpacity = ParseDouble(HeatmapAlphaBox.Text, min: 0, max: 1, name: "Heatmap Initial Opacity");
-            VisualizationSettings.HeatmapThreshold = ParseDouble(HeatmapThresholdBox.Text, min: 0, max: 1, name: "Heatmap Threshold");
+            VisualizationSettings.HeatmapRadius = ParseDouble(HeatmapRadiusBox.Text, min: 1, max: 2000, name: "Радиус тепловой карты");
+            VisualizationSettings.HeatmapInitialOpacity = ParseDouble(HeatmapAlphaBox.Text, min: 0, max: 1, name: "Начальная прозрачность тепловой карты");
+            VisualizationSettings.HeatmapThreshold = ParseDouble(HeatmapThresholdBox.Text, min: 0, max: 1, name: "Порог тепловой карты");
             // ==========================================
 
             DialogResult = true;

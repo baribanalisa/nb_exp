@@ -17,6 +17,7 @@
 
     <Window.Resources>
         <local:StimulusDisplayNameConverter x:Key="StimulusDisplayNameConverter"/>
+        <local:MultiExportModeDisplayConverter x:Key="MultiExportModeDisplayConverter"/>
 
         <!-- Палитра -->
 
@@ -235,7 +236,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Text="Стимулы (IMAGE)" Style="{StaticResource SectionTitleStyle}" />
+                    <TextBlock Text="Стимулы (изображения)" Style="{StaticResource SectionTitleStyle}" />
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="Выбрать все"
@@ -402,6 +403,11 @@
                               BorderThickness="0"
                               ItemsSource="{Binding Modes}"
                               SelectedItem="{Binding Mode}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource MultiExportModeDisplayConverter}}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
 
                         <!-- Принудительно делаем внутренности ComboBox светлыми (включая Popup) -->
                         <ComboBox.Resources>
@@ -439,12 +445,12 @@
                     </Grid.ColumnDefinitions>
 
                     <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                        <CheckBox Content="Source (bin)" IsChecked="{Binding ExportSource}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Raw gaze (CSV)" IsChecked="{Binding ExportRaw}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Actions (CSV)" IsChecked="{Binding ExportActions}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="AOI (json)" IsChecked="{Binding ExportAoi}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Gaze image" IsChecked="{Binding ExportGazeImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Heatmap image" IsChecked="{Binding ExportHeatImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Исходные данные (bin)" IsChecked="{Binding ExportSource}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Сырые данные взгляда (CSV)" IsChecked="{Binding ExportRaw}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Действия (CSV)" IsChecked="{Binding ExportActions}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Области интереса (JSON)" IsChecked="{Binding ExportAoi}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Изображение взгляда" IsChecked="{Binding ExportGazeImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Изображение тепловой карты" IsChecked="{Binding ExportHeatImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
                         <CheckBox Content="EDF" IsChecked="{Binding ExportEdf}" IsEnabled="{Binding CanExportEdf}" Margin="0,0,14,10"/>
                     </WrapPanel>
 

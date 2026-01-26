@@ -57,6 +57,6 @@ public partial class App : Application
         }
         catch { /* ignore */ }
 
-        MessageBox.Show(ex.ToString(), "Crash", MessageBoxButton.OK, MessageBoxImage.Error);
+        MessageBox.Show(ex.ToString(), "Сбой", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 }

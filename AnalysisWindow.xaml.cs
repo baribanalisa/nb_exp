@@ -941,11 +941,11 @@ public partial class AnalysisWindow : Window
             hrMax = Math.Min(200, hrMax);
             if (hrMax <= hrMin) hrMax = hrMin + 1;
             KgrHrChart.SetData(hrSeries, tMin, tMax, hrMin - 10, hrMax + 10, double.NaN,
-                "Пульс (HR)", null, "уд/мин");
+                "Пульс (ЧСС)", null, "уд/мин");
         }
         else
         {
-            KgrHrChart.Clear("Нет данных HR");
+            KgrHrChart.Clear("Нет данных ЧСС");
         }
 
         if (TryBuildMetricSeries(sources, s => s.Ppg, out var ppgSeries, out var ppgMin, out var ppgMax))
@@ -2040,7 +2040,7 @@ public partial class AnalysisWindow : Window
         if (startPaused)
         {
             await PrimeFirstFrameAndPauseAsync();
-            UpdatePlayButton(); // должно стать "▶ Play"
+            UpdatePlayButton(); // должно стать "▶ Воспроизвести"
         }
         else
         {
@@ -2134,7 +2134,7 @@ public partial class AnalysisWindow : Window
         TimeSlider.Maximum = 1;
         TimeSlider.Value = 0;
         TimeText.Text = "00:00 / 00:00";
-        PlayPauseBtn.Content = "▶ Play";
+        PlayPauseBtn.Content = "▶ Воспроизвести";
     }
 
     private void TickUi()
@@ -2177,11 +2177,11 @@ public partial class AnalysisWindow : Window
     {
         if (_player == null)
         {
-            PlayPauseBtn.Content = "▶ Play";
+            PlayPauseBtn.Content = "▶ Воспроизвести";
             return;
         }
 
-        PlayPauseBtn.Content = _player.IsPlaying ? "⏸ Pause" : "▶ Play";
+        PlayPauseBtn.Content = _player.IsPlaying ? "⏸ Пауза" : "▶ Воспроизвести";
     }
 
     private static string Fmt(double sec)
@@ -3578,7 +3578,7 @@ public partial class AnalysisWindow : Window
         TimeSlider.Maximum = 1;
         TimeSlider.Value = 0;
         TimeText.Text = "00:00 / 00:00";
-        PlayPauseBtn.Content = "▶ Play";
+        PlayPauseBtn.Content = "▶ Воспроизвести";
 
         // time-slice
         _sliceStimUid = null;

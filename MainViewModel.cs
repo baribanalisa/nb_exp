@@ -241,12 +241,12 @@ public sealed class MainViewModel : ObservableObject
 
     public string SelectedPathText =>
         SelectedExperiment == null ? "" :
-        $"Experiments root:\n{ExperimentsRoot}\n\nExperiment folder:\n{SelectedExperiment.ExpDir}";
+        $"Корневая папка экспериментов:\n{ExperimentsRoot}\n\nПапка эксперимента:\n{SelectedExperiment.ExpDir}";
 
     public string SelectedMetaText =>
         SelectedExperiment == null ? "" :
         $"Устройства: {SelectedExperiment.DevicesText} | Результатов: {SelectedExperiment.ResultsCount} | " +
-        $"mod-time: {SelectedExperiment.ModTimeText} | create-time: {SelectedExperiment.CreateTimeText}";
+        $"время изменения: {SelectedExperiment.ModTimeText} | время создания: {SelectedExperiment.CreateTimeText}";
 
     private string _statusText = "";
     public string StatusText
@@ -255,7 +255,7 @@ public sealed class MainViewModel : ObservableObject
         set => SetProperty(ref _statusText, value);
     }
 
-    public string StimuliCountText => $"{Stimuli.Count} items";
+    public string StimuliCountText => $"{Stimuli.Count} элементов";
 
     public MainViewModel()
     {
@@ -289,7 +289,7 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task ReloadExperimentsAsync(string? selectUid = null)
     {
-        StatusText = $"Папка Experiments: {ExperimentsRoot}";
+        StatusText = $"Папка экспериментов: {ExperimentsRoot}";
 
         List<ExperimentListItem> list;
         try
@@ -466,7 +466,7 @@ private static int CountReadableResults(string resultsDir)
             {
                 var expJson = File.ReadAllText(item.ExpJsonPath);
                 var exp = JsonSerializer.Deserialize<ExperimentFile>(expJson)
-                        ?? throw new InvalidOperationException("Failed to parse exp.json");
+                        ?? throw new InvalidOperationException("Не удалось распарсить exp.json");
 
                 var list = new List<StimulusTileVm>();
 
@@ -833,4 +833,3 @@ private static int CountReadableResults(string resultsDir)
             => (Brush)new BrushConverter().ConvertFromString(hex)!;
     }
 }
-

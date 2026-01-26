@@ -134,10 +134,10 @@
                                 <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Foreground="#555" Text="Окно фильтра (сэмплы)"/>
                                 <TextBox x:Name="WindowSizeBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Foreground="#555" Text="Gap filling (сэмплы)"/>
+                                <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Foreground="#555" Text="Заполнение разрывов (сэмплы)"/>
                                 <TextBox x:Name="GapWindowSizeBox" Grid.Row="8" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                <TextBlock Grid.Row="10" Grid.Column="0" VerticalAlignment="Center" Foreground="#555" Text="MaxSpeed (°/сек)"/>
+                                <TextBlock Grid.Row="10" Grid.Column="0" VerticalAlignment="Center" Foreground="#555" Text="Макс. скорость (°/с)"/>
                                 <TextBox x:Name="MaxSpeedBox" Grid.Row="10" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                             </Grid>
                         </Border>
@@ -160,15 +160,15 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" Text="I-DT (Dispersion)"/>
+                                        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" Text="I-DT (дисперсия)"/>
 
-                                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="DispersionThreshold (px)"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Порог дисперсии (пкс)"/>
                                         <TextBox x:Name="IdtDispersionBox" Grid.Row="2" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="MinDuration (ms)"/>
+                                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Мин. длительность (мс)"/>
                                         <TextBox x:Name="IdtMinDurationBox" Grid.Row="4" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="MinWindow (ms)"/>
+                                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Мин. окно (мс)"/>
                                         <TextBox x:Name="IdtWindowBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                                     </Grid>
                                 </Border>
@@ -193,18 +193,18 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" Text="I-VT (Velocity)"/>
+                                        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" Text="I-VT (скорость)"/>
 
-                                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="SpeedFix (deg/sec)"/>
+                                        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Порог скорости (°/с)"/>
                                         <TextBox x:Name="IvtSpeedFixBox" Grid.Row="2" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="MinDuration (ms)"/>
+                                        <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Мин. длительность (мс)"/>
                                         <TextBox x:Name="IvtMinDurationBox" Grid.Row="4" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="MergeTime (ms)"/>
+                                        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Время объединения (мс)"/>
                                         <TextBox x:Name="IvtMergeTimeBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                        <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="MergeAngle (deg)"/>
+                                        <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="Угол объединения (°)"/>
                                         <TextBox x:Name="IvtMergeAngleBox" Grid.Row="8" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                                     </Grid>
                                 </Border>
@@ -240,25 +240,25 @@
 
                             <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" FontSize="16" Text="Визуализация фиксаций"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Min radius (px)"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Мин. радиус (пкс)"/>
                             <TextBox x:Name="VisMinRadiusBox" Grid.Row="2" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Max radius (px)"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Макс. радиус (пкс)"/>
                             <TextBox x:Name="VisMaxRadiusBox" Grid.Row="4" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                            <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Max duration (sec)"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Макс. длительность (с)"/>
                             <TextBox x:Name="VisMaxDurationBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                            <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="Line width (px)"/>
+                            <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="Толщина линии (пкс)"/>
                             <TextBox x:Name="VisLineWidthBox" Grid.Row="8" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                            <TextBlock Grid.Row="10" Grid.Column="0" VerticalAlignment="Center" Text="Alpha (0-1)"/>
+                            <TextBlock Grid.Row="10" Grid.Column="0" VerticalAlignment="Center" Text="Прозрачность (0–1)"/>
                             <TextBox x:Name="VisAlphaBox" Grid.Row="10" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                            <TextBlock Grid.Row="12" Grid.Column="0" VerticalAlignment="Center" Text="Font family"/>
+                            <TextBlock Grid.Row="12" Grid.Column="0" VerticalAlignment="Center" Text="Шрифт"/>
                             <TextBox x:Name="VisFontFamilyBox" Grid.Row="12" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                            <TextBlock Grid.Row="14" Grid.Column="0" VerticalAlignment="Center" Text="Font size (px)"/>
+                            <TextBlock Grid.Row="14" Grid.Column="0" VerticalAlignment="Center" Text="Размер шрифта (пкс)"/>
                             <TextBox x:Name="VisFontSizeBox" Grid.Row="14" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                         </Grid>
                     </Border>
@@ -293,7 +293,7 @@
                             <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Алгоритм"/>
                             <ComboBox x:Name="HeatmapFunctionCombo" Grid.Row="4" Grid.Column="1" Height="28"/>
 
-                            <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Радиус (px)"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Радиус (пкс)"/>
                             <TextBox x:Name="HeatmapRadiusBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
                             <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="Начальная прозрачность"/>
@@ -308,14 +308,14 @@
                                 <TabItem Header="Пчелиный рой" Style="{StaticResource TopTabItemStyle}">
                     <Border CornerRadius="12" BorderThickness="1" BorderBrush="#E5E7EB" Background="White" Padding="16" Margin="0,10,0,0">
                         <StackPanel>
-                            <TextBlock Text="Параметры Bee Swarm" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,15"/>
+                            <TextBlock Text="Параметры пчелиного роя" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,15"/>
 
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="200"/>
                                     <ColumnDefinition Width="240"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="Радиус круга (px)"/>
+                                <TextBlock Text="Радиус круга (пкс)"/>
                                 <TextBox x:Name="BeeRadiusBox" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                             </Grid>
 
@@ -324,7 +324,7 @@
                                     <ColumnDefinition Width="200"/>
                                     <ColumnDefinition Width="240"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="Толщина линии (px)"/>
+                                <TextBlock Text="Толщина линии (пкс)"/>
                                 <TextBox x:Name="BeeLineBox" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                             </Grid>
                             
@@ -340,7 +340,7 @@
                             <TextBlock Text="Фильтрация КГР (Shimmer GSR)" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,12"/>
 
                             <CheckBox x:Name="KgrFilterEnabledCheck"
-                                      Content="Включить фильтрацию (только отображение, raw не меняется)"
+                                      Content="Включить фильтрацию (только отображение, сырые данные не меняются)"
                                       Margin="0,0,0,12"/>
 
                             <Grid Margin="0,0,0,12">
@@ -379,7 +379,7 @@
                                 <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Text="τ SC (сек)"/>
                                 <TextBox x:Name="KgrScTauSecBox" Grid.Row="8" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
-                                <TextBlock Grid.Row="10" Grid.Column="0" VerticalAlignment="Center" Text="τ HR (сек)"/>
+                                <TextBlock Grid.Row="10" Grid.Column="0" VerticalAlignment="Center" Text="τ ЧСС (сек)"/>
                                 <TextBox x:Name="KgrHrTauSecBox" Grid.Row="10" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
 
                                 <TextBlock Grid.Row="12" Grid.Column="0" VerticalAlignment="Center" Text="τ PPG (сек)"/>
@@ -403,21 +403,21 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" Text="HR: защита от артефактов" Margin="0,0,0,4"/>
+                                <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontWeight="SemiBold" Text="ЧСС: защита от артефактов" Margin="0,0,0,4"/>
 
                                 <CheckBox x:Name="KgrClampHrCheck"
                                           Grid.Row="2" Grid.ColumnSpan="2"
-                                          Content="Ограничивать HR (диапазон + максимальный скачок)"
+                                          Content="Ограничивать ЧСС (диапазон + максимальный скачок)"
                                           Margin="0,0,0,6"/>
 
-                                <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="HR min / max (bpm)"/>
+                                <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="Мин./макс. ЧСС (уд/мин)"/>
                                 <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal">
                                     <TextBox x:Name="KgrHrMinBox" Width="110" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                                     <TextBlock Text=" / " VerticalAlignment="Center" Margin="6,0"/>
                                     <TextBox x:Name="KgrHrMaxBox" Width="110" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                                 </StackPanel>
 
-                                <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Макс. скачок (bpm/sec)"/>
+                                <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Text="Макс. скачок (уд/мин/с)"/>
                                 <TextBox x:Name="KgrHrMaxDeltaBox" Grid.Row="6" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Padding="4,0"/>
                             </Grid>
 

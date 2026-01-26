@@ -20,13 +20,13 @@ public static class ExperimentLoader
     {
         if (Directory.Exists(selectedPath))
         {
-            var expJson = FindExpJson(selectedPath) ?? throw new FileNotFoundException("exp.json not found in selected folder");
+            var expJson = FindExpJson(selectedPath) ?? throw new FileNotFoundException("exp.json не найден в выбранной папке");
             var expDir = Path.GetDirectoryName(expJson)!;
             return new ExperimentSource(expDir, selectedPath, ArchivePath: null);
         }
 
         if (!File.Exists(selectedPath))
-            throw new FileNotFoundException("Selected file not found", selectedPath);
+            throw new FileNotFoundException("Выбранный файл не найден", selectedPath);
 
         if (selectedPath.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
         {
@@ -37,7 +37,7 @@ public static class ExperimentLoader
 
             ExtractTarGz(selectedPath, workRoot);
 
-            var expJson = FindExpJson(workRoot) ?? throw new FileNotFoundException("exp.json not found after extracting archive");
+            var expJson = FindExpJson(workRoot) ?? throw new FileNotFoundException("exp.json не найден после распаковки архива");
             var expDir = Path.GetDirectoryName(expJson)!;
 
             return new ExperimentSource(expDir, workRoot, selectedPath);
@@ -49,7 +49,7 @@ public static class ExperimentLoader
             return new ExperimentSource(expDir, expDir, ArchivePath: null);
         }
 
-        throw new InvalidOperationException("Select .tar.gz, folder, or exp.json");
+        throw new InvalidOperationException("Выберите .tar.gz, папку или exp.json");
     }
     public static void RepackTarGz(string sourceRootDir, string targetTarGzPath, bool makeBackup = true)
     {
@@ -220,7 +220,7 @@ public static class ExperimentLoader
             if (r == 0)
             {
                 if (allowEof && total == 0) return false;
-                throw new EndOfStreamException("Unexpected end of tar stream");
+                throw new EndOfStreamException("Неожиданный конец потока tar");
             }
             total += r;
         }
@@ -273,14 +273,14 @@ public static class ExperimentLoader
     private static byte[] ReadBytes(Stream s, long count)
     {
         if (count < 0 || count > int.MaxValue)
-            throw new InvalidOperationException("Tar entry too large");
+            throw new InvalidOperationException("Слишком большой элемент tar");
 
         var buffer = new byte[count];
         int read = 0;
         while (read < count)
         {
             int r = s.Read(buffer, read, (int)count - read);
-            if (r == 0) throw new EndOfStreamException("Unexpected end of tar stream");
+            if (r == 0) throw new EndOfStreamException("Неожиданный конец потока tar");
             read += r;
         }
         return buffer;
@@ -295,7 +295,7 @@ public static class ExperimentLoader
         {
             int toRead = (int)Math.Min(buf.Length, left);
             int r = src.Read(buf, 0, toRead);
-            if (r == 0) throw new EndOfStreamException("Unexpected end of tar stream");
+            if (r == 0) throw new EndOfStreamException("Неожиданный конец потока tar");
             dst.Write(buf, 0, r);
             left -= r;
         }
@@ -310,7 +310,7 @@ public static class ExperimentLoader
         {
             int toRead = (int)Math.Min(buf.Length, left);
             int r = s.Read(buf, 0, toRead);
-            if (r == 0) throw new EndOfStreamException("Unexpected end of tar stream");
+            if (r == 0) throw new EndOfStreamException("Неожиданный конец потока tar");
             left -= r;
         }
     }
@@ -402,7 +402,7 @@ public static class ExperimentLoader
         // архив обычно содержит одну верхнюю папку <exp_uid>/exp.json
         // ищем exp.json и берём папку, где он лежит
         var expJson = Directory.EnumerateFiles(tempRoot, "exp.json", SearchOption.AllDirectories).FirstOrDefault()
-            ?? throw new FileNotFoundException("exp.json not found inside imported archive");
+            ?? throw new FileNotFoundException("exp.json не найден внутри импортированного архива");
 
         var expDir = Path.GetDirectoryName(expJson)!;
 
@@ -431,7 +431,7 @@ public static class ExperimentLoader
 
         // важно: exp.json должен быть прямо в destDir
         if (!File.Exists(Path.Combine(destDir, "exp.json")))
-            throw new InvalidOperationException("Imported experiment folder doesn't have exp.json at root (analyzer won't see it).");
+            throw new InvalidOperationException("В импортированной папке эксперимента нет exp.json в корне (анализатор не увидит).");
 
         return destDir;
     }

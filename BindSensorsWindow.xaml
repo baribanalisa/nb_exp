@@ -168,7 +168,7 @@
 
             <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}">
                 <StackPanel>
-                    <TextBlock Text="Глобальные сенсоры (фильтр по dev-type)" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,12"/>
+                    <TextBlock Text="Глобальные сенсоры (фильтр по типу устройства)" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,12"/>
                     <ListBox x:Name="GlobalSensorsList"
                              DisplayMemberPath="Display"
                              ItemContainerStyle="{StaticResource ListBoxItemStyle}"/>

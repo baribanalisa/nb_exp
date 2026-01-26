@@ -21,7 +21,7 @@ public partial class HardwareWindow : Window
         InitializeComponent();
 
         _path = TrackerPaths.FindExistingOrDefault("sensors.json");
-        MessageBox.Show(_path, "Global sensors.json path");
+        MessageBox.Show(_path, "Путь к файлу sensors.json");
         TrackerPaths.EnsureParentDir(_path);
 
         if (File.Exists(_path))
@@ -66,13 +66,13 @@ public partial class HardwareWindow : Window
         var bt = (ShimmerBtNameBox.Text ?? "").Trim();
         if (string.IsNullOrWhiteSpace(bt))
         {
-            MessageBox.Show("BT name пустой.", "Shimmer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Имя BT пустое.", "Shimmer", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (!int.TryParse((ShimmerPortBox.Text ?? "").Trim(), out var port) || port <= 0 || port > 65535)
         {
-            MessageBox.Show("Port должен быть числом 1..65535.", "Shimmer", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Порт должен быть числом 1..65535.", "Shimmer", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -111,7 +111,7 @@ public partial class HardwareWindow : Window
             {
                 if (string.IsNullOrWhiteSpace(s.Params))
                 {
-                    MessageBox.Show("У ShimmerGSR обязателен params с {name,port}.", "Оборудование",
+                    MessageBox.Show("У ShimmerGSR обязателен параметр params с {name,port}.", "Оборудование",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }

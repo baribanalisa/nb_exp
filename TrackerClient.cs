@@ -46,7 +46,7 @@ public sealed class TrackerClient
             }
         }
 
-        throw new InvalidOperationException("Unreachable code");
+        throw new InvalidOperationException("Недостижимый код");
     }
 
     public Task EnableAsync(string id, bool enabled, CancellationToken ct = default) =>

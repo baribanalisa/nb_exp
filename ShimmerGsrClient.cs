@@ -713,7 +713,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             await Task.Delay(200, ct).ConfigureAwait(false);
         }
 
-        throw new InvalidOperationException("Shimmer HTTP port did not open in time.");
+        throw new InvalidOperationException("HTTP-порт Shimmer не открылся вовремя.");
     }
 
     private void StartUdpLoop()
@@ -920,11 +920,11 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
     private void StartProgram()
     {
         if (_proc != null && !_proc.HasExited)
-            throw new InvalidOperationException("Shimmer.exe already running.");
+            throw new InvalidOperationException("Shimmer.exe уже запущен.");
 
         var exePath = Path.Combine(_shimmerDir, "Shimmer.exe");
         if (!File.Exists(exePath))
-            throw new FileNotFoundException("Shimmer.exe not found", exePath);
+            throw new FileNotFoundException("Shimmer.exe не найден", exePath);
 
         var psi = new ProcessStartInfo
         {
@@ -941,7 +941,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
 
         try
         {
-            _proc = Process.Start(psi) ?? throw new InvalidOperationException("Process.Start returned null");
+            _proc = Process.Start(psi) ?? throw new InvalidOperationException("Process.Start вернул null");
         }
         catch (System.ComponentModel.Win32Exception wex)
         {
@@ -969,7 +969,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             }
         }
 
-        throw new InvalidOperationException("Shimmer HTTP endpoint did not become ready.");
+        throw new InvalidOperationException("HTTP-эндпоинт Shimmer не стал готовым.");
     }
 
     private async Task PostExpectOkAsync(string service, string jsonBody, CancellationToken ct)
@@ -988,7 +988,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             var root = doc.RootElement;
 
             if (!root.TryGetProperty("result", out var r))
-                throw new InvalidOperationException($"Shimmer HTTP {service}: no result field, body={s}");
+                throw new InvalidOperationException($"Shimmer HTTP {service}: нет поля result, body={s}");
 
             int resultCode;
             if (r.ValueKind == JsonValueKind.Number && r.TryGetInt32(out var n))
@@ -996,7 +996,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
             else if (r.ValueKind == JsonValueKind.String && int.TryParse(r.GetString(), out var ns))
                 resultCode = ns;
             else
-                throw new InvalidOperationException($"Shimmer HTTP {service}: invalid result type, body={s}");
+                throw new InvalidOperationException($"Shimmer HTTP {service}: неверный тип result, body={s}");
 
             if (resultCode != 0)
                 throw new InvalidOperationException($"Shimmer HTTP {service}: result != 0, body={s}");
@@ -1007,7 +1007,7 @@ public sealed class ShimmerGsrClient : IAsyncDisposable
         }
         catch (JsonException)
         {
-            throw new InvalidOperationException($"Shimmer HTTP {service}: invalid JSON, body={s}");
+            throw new InvalidOperationException($"Shimmer HTTP {service}: некорректный JSON, body={s}");
         }
     }
 

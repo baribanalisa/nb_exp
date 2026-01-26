@@ -161,10 +161,10 @@
                           ColumnHeaderStyle="{StaticResource ResultsHeaderStyle}"
                           CellStyle="{StaticResource ResultsCellStyle}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="name" Binding="{Binding Name}" Width="2*"/>
-                        <DataGridTextColumn Header="dev-type" Binding="{Binding DevType}" Width="2*"/>
-                        <DataGridTextColumn Header="uid" Binding="{Binding Uid}" Width="2*"/>
-                        <DataGridTextColumn Header="params (JSON string)" Binding="{Binding Params}" Width="3*"/>
+                        <DataGridTextColumn Header="имя" Binding="{Binding Name}" Width="2*"/>
+                        <DataGridTextColumn Header="тип устройства" Binding="{Binding DevType}" Width="2*"/>
+                        <DataGridTextColumn Header="UID" Binding="{Binding Uid}" Width="2*"/>
+                        <DataGridTextColumn Header="параметры (JSON)" Binding="{Binding Params}" Width="3*"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </Border>
@@ -173,18 +173,18 @@
                 <StackPanel>
                     <TextBlock Text="Быстро настроить ShimmerGSR" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,12"/>
 
-                    <TextBlock Text="BT name" Foreground="{StaticResource MutedTextBrush}"/>
+                    <TextBlock Text="Имя BT" Foreground="{StaticResource MutedTextBrush}"/>
                     <TextBox x:Name="ShimmerBtNameBox" Margin="0,6,0,14"/>
 
-                    <TextBlock Text="Port" Foreground="{StaticResource MutedTextBrush}"/>
+                    <TextBlock Text="Порт" Foreground="{StaticResource MutedTextBrush}"/>
                     <TextBox x:Name="ShimmerPortBox" Margin="0,6,0,14"/>
 
-                    <Button Content="Применить к выбранной строке (dev-type=ShimmerGSR)"
+                    <Button Content="Применить к выбранной строке (тип устройства = ShimmerGSR)"
                             Click="ApplyShimmer_Click"
                             Style="{StaticResource TopBarPillButton}"
                             Margin="0,4,0,16"/>
 
-                    <TextBlock Text="Подсказка: dev-type для Shimmer строго 'ShimmerGSR'."
+                    <TextBlock Text="Подсказка: тип устройства для Shimmer строго 'ShimmerGSR'."
                                TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"/>
                 </StackPanel>
             </Border>

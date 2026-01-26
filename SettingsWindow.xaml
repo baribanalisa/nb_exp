@@ -131,7 +131,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Монитор (write_desktop)" Style="{StaticResource RowLabel}"/>
+                <TextBlock Text="Монитор (запись рабочего стола)" Style="{StaticResource RowLabel}"/>
                 <ComboBox Grid.Column="1" x:Name="MonitorCombo" MinWidth="420"/>
             </Grid>
         </GroupBox>

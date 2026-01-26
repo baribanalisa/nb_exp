@@ -416,11 +416,11 @@
 
                         <TextBlock Text="Толщина:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
                         <ComboBox x:Name="AoiThickCombo" Width="60" Margin="0,0,16,0" SelectionChanged="AoiStyle_Changed" Height="28">
-                            <ComboBoxItem Content="1 px" Tag="1.0"/>
-                            <ComboBoxItem Content="2 px" Tag="2.0" IsSelected="True"/>
-                            <ComboBoxItem Content="3 px" Tag="3.0"/>
-                            <ComboBoxItem Content="4 px" Tag="4.0"/>
-                            <ComboBoxItem Content="5 px" Tag="5.0"/>
+                            <ComboBoxItem Content="1 пкс" Tag="1.0"/>
+                            <ComboBoxItem Content="2 пкс" Tag="2.0" IsSelected="True"/>
+                            <ComboBoxItem Content="3 пкс" Tag="3.0"/>
+                            <ComboBoxItem Content="4 пкс" Tag="4.0"/>
+                            <ComboBoxItem Content="5 пкс" Tag="5.0"/>
                         </ComboBox>
                     </StackPanel>
                 </Border>
@@ -530,17 +530,17 @@
                             <DataGridTextColumn Header="Общее время (с)" Binding="{Binding TotalDwellTime, StringFormat=F2}" IsReadOnly="True" Width="110"/>
                             
                             <!-- 4. Новые метрики по вашему списку -->
-                            <DataGridTextColumn Header="До первой (N)" Binding="{Binding FixationsBeforeFirst}" IsReadOnly="True" Width="90" ToolTipService.ToolTip="Количество фиксаций до первой фиксации в AOI"/>
-                            <DataGridTextColumn Header="TTFF (с)" Binding="{Binding TimeToFirstFixation, StringFormat=F2}" IsReadOnly="True" Width="80" ToolTipService.ToolTip="Время до первой фиксации"/>
+                            <DataGridTextColumn Header="До первой (N)" Binding="{Binding FixationsBeforeFirst}" IsReadOnly="True" Width="90" ToolTipService.ToolTip="Количество фиксаций до первой фиксации в области интереса"/>
+                            <DataGridTextColumn Header="До первой фиксации (с)" Binding="{Binding TimeToFirstFixation, StringFormat=F2}" IsReadOnly="True" Width="130" ToolTipService.ToolTip="Время до первой фиксации"/>
                             <DataGridTextColumn Header="Длит. первой (с)" Binding="{Binding FirstFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="110"/>
                             
                             <DataGridTextColumn Header="Возвраты (N)" Binding="{Binding RevisitCount}" IsReadOnly="True" Width="90"/>
                             <DataGridTextColumn Header="Ср. длит. фикс. (с)" Binding="{Binding AvgFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="120"/>
                             
                             <DataGridTextColumn Header="Саккад (N)" Binding="{Binding SaccadeCount}" IsReadOnly="True" Width="80"/>
-                            <DataGridTextColumn Header="Ср. ампл. саккад (px)" Binding="{Binding AvgSaccadeAmplitude, StringFormat=F1}" IsReadOnly="True" Width="130"/>
+                            <DataGridTextColumn Header="Ср. ампл. саккад (пкс)" Binding="{Binding AvgSaccadeAmplitude, StringFormat=F1}" IsReadOnly="True" Width="130"/>
                             
-                            <DataGridTextColumn Header="Путь (px)" Binding="{Binding ScanpathLength, StringFormat=F0}" IsReadOnly="True" Width="80"/>
+                            <DataGridTextColumn Header="Путь (пкс)" Binding="{Binding ScanpathLength, StringFormat=F0}" IsReadOnly="True" Width="80"/>
                             <DataGridTextColumn Header="Площадь (%)" Binding="{Binding AreaRatio, StringFormat=F1}" IsReadOnly="True" Width="90"/>
 
                             <!-- Кнопка удаления -->
@@ -548,7 +548,7 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Button Content="✕" Click="DeleteAoiRow_Click" 
-                                                Background="Transparent" BorderThickness="0" Foreground="Red" Cursor="Hand" ToolTip="Удалить AOI"/>
+                                                Background="Transparent" BorderThickness="0" Foreground="Red" Cursor="Hand" ToolTip="Удалить область интереса"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -599,7 +599,7 @@
                                 Padding="12,8"
                                 Click="PlayPauseBtn_Click"
                                 IsEnabled="False">
-                            ▶ Play
+                            ▶ Воспроизвести
                         </Button>
 
                         <Slider x:Name="TimeSlider"

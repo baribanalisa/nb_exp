@@ -68,7 +68,7 @@ public sealed class MultiExportViewModel : ObservableObject
         }
     }
 
-    private string _templateStatusText = "OK";
+    private string _templateStatusText = "ОК";
     public string TemplateStatusText
     {
         get => _templateStatusText;
@@ -222,7 +222,7 @@ public sealed class MultiExportViewModel : ObservableObject
         if (_resolver.TryValidate(FilenameTemplate, Experiment, out var err))
         {
             TemplateIsValid = true;
-            TemplateStatusText = "OK";
+            TemplateStatusText = "ОК";
         }
         else
         {

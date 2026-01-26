@@ -293,7 +293,7 @@ public partial class MainWindow : Window
 
         if (toDelete.Count == 0)
         {
-            MessageBox.Show("Ничего не выбрано. Отметь чекбоксы в первом столбце (Select).",
+            MessageBox.Show("Ничего не выбрано. Отметь чекбоксы в первом столбце.",
                 "Удаление результатов", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -638,7 +638,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.ToString(), "Save error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(ex.ToString(), "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Error);
                 // если коммит не вышел — не удаляем автоматически, чтобы не потерять данные
                 return false;
             }
@@ -984,7 +984,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.ToString(), "Init error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.ToString(), "Ошибка инициализации", MessageBoxButton.OK, MessageBoxImage.Error);
             ((MainViewModel)DataContext).StatusText = "Ошибка инициализации";
         }
     }
@@ -996,7 +996,7 @@ public partial class MainWindow : Window
         var sfd = new Microsoft.Win32.SaveFileDialog
         {
             Title = "Экспорт эксперимента (.tar.gz)",
-            Filter = "Experiment archive (*.tar.gz)|*.tar.gz|All|*.*",
+            Filter = "Архив эксперимента (*.tar.gz)|*.tar.gz|Все файлы|*.*",
             FileName = $"{item.UidFolder}.tar.gz",
             AddExtension = true,
             DefaultExt = ".tar.gz",
@@ -1023,7 +1023,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.ToString(), "Export error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.ToString(), "Ошибка экспорта", MessageBoxButton.OK, MessageBoxImage.Error);
             vm.StatusText = "Экспорт: ошибка";
         }
         finally
@@ -1119,7 +1119,7 @@ public partial class MainWindow : Window
         if (ExpList.SelectedItem is not ExperimentListItem item) return;
 
         var exp = JsonSerializer.Deserialize<ExperimentFile>(File.ReadAllText(item.ExpJsonPath))
-                ?? throw new InvalidOperationException("Failed to parse exp.json");
+                ?? throw new InvalidOperationException("Не удалось распарсить exp.json");
 
         var w = new BindSensorsWindow(item.ExpDir, exp) { Owner = this };
         w.ShowDialog();
@@ -1140,7 +1140,7 @@ public partial class MainWindow : Window
         var ofd = new OpenFileDialog
         {
             Title = "Импорт эксперимента (.tar.gz)",
-            Filter = "Experiment archive (*.tar.gz)|*.tar.gz|All|*.*",
+            Filter = "Архив эксперимента (*.tar.gz)|*.tar.gz|Все файлы|*.*",
             CheckFileExists = true
         };
         if (ofd.ShowDialog(this) != true) return;
@@ -1157,7 +1157,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.ToString(), "Import error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.ToString(), "Ошибка импорта", MessageBoxButton.OK, MessageBoxImage.Error);
             vm.StatusText = "Импорт: ошибка";
         }
     }
@@ -1205,7 +1205,7 @@ public partial class MainWindow : Window
         {
             // загрузим exp заранее, чтобы окно проверки знало список устройств
             var exp = JsonSerializer.Deserialize<ExperimentFile>(File.ReadAllText(item.ExpJsonPath))
-                    ?? throw new InvalidOperationException("Failed to parse exp.json");
+                    ?? throw new InvalidOperationException("Не удалось распарсить exp.json");
 
             // 1) окно статусов (коннектит Shimmer и проверяет трекер)
             var check = new DeviceCheckWindow(item.ExpDir, exp, _runCts.Token) { Owner = this };
@@ -1240,7 +1240,7 @@ public partial class MainWindow : Window
             var msg = ex.Message;
             if (ex is FileNotFoundException or DirectoryNotFoundException)
                 msg = $"Не найден стимул.\n\n{ex.Message}";
-            MessageBox.Show(msg, "Experiment error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(msg, "Ошибка эксперимента", MessageBoxButton.OK, MessageBoxImage.Error);
 
             var saved = PromptSavePendingResult("Ошибка во время эксперимента");
             vm.StatusText = saved ? "Сохранён неполный результат (после ошибки)" : "Ошибка выполнения";
@@ -1277,10 +1277,10 @@ public partial class MainWindow : Window
         BindBtn.IsEnabled = true;
         ExpNameText.Text = item.Name ?? item.UidFolder;
         ExpDescrText.Text = item.Description ?? "";
-        ExpPathText.Text = $"Experiments root:\n{_experimentsRoot}\n\nExperiment folder:\n{item.ExpDir}";
-        ExpMetaText.Text = $"Результатов: {item.ResultsCount} | mod-time: {item.ModTime} | create-time: {item.CreateTime}";
+        ExpPathText.Text = $"Корневая папка экспериментов:\n{_experimentsRoot}\n\nПапка эксперимента:\n{item.ExpDir}";
+        ExpMetaText.Text = $"Результатов: {item.ResultsCount} | время изменения: {item.ModTime} | время создания: {item.CreateTime}";
         ExpMetaText.Text =
-            $"Устройства: {item.DevicesText} | Результатов: {item.ResultsCount} | mod-time: {item.ModTime} | create-time: {item.CreateTime}";
+            $"Устройства: {item.DevicesText} | Результатов: {item.ResultsCount} | время изменения: {item.ModTime} | время создания: {item.CreateTime}";
 
     }
 
@@ -1293,7 +1293,7 @@ public partial class MainWindow : Window
     private async Task ReloadExperimentsAsync(string? selectUid)
     {
         Directory.CreateDirectory(_experimentsRoot);
-        vm.StatusText = $"Папка Experiments: {_experimentsRoot}";
+        vm.StatusText = $"Папка экспериментов: {_experimentsRoot}";
 
         _items = await Task.Run(() => ScanExperiments(_experimentsRoot));
 
@@ -1449,17 +1449,17 @@ public partial class MainWindow : Window
 
         var expJsonPath = Path.Combine(expDir, "exp.json");
         var exp = JsonSerializer.Deserialize<ExperimentFile>(await File.ReadAllTextAsync(expJsonPath, ct))
-                ?? throw new InvalidOperationException("Failed to parse exp.json");
+                ?? throw new InvalidOperationException("Не удалось распарсить exp.json");
 
         if (exp.Stimuls.Count == 0)
-            throw new InvalidOperationException("No stimuls in exp.json");
+            throw new InvalidOperationException("В exp.json нет стимулов");
 
         // эксперимент обязан начинаться с калибровки
         if ((exp.Stimuls[0].Kind ?? 0) != 0)
             throw new InvalidOperationException("Эксперимент должен начинаться с калибровки (kind=0 или отсутствует).");
 
         if (exp.Devices.Count == 0)
-            throw new InvalidOperationException("No devices in exp.json");
+            throw new InvalidOperationException("В exp.json нет устройств");
 
         var stimulsRun = exp.Stimuls.ToList();
         PermutateGroupsLikeVala(stimulsRun, Random.Shared);
@@ -1476,7 +1476,7 @@ public partial class MainWindow : Window
 
         var trackerUid =
             exp.Devices.FirstOrDefault(d => IsEyeTrackerType(d.DevType))?.Uid
-            ?? throw new InvalidOperationException("В exp.json не найден ай-трекер (dev-type PathFinder/Gazepoint/...).");
+            ?? throw new InvalidOperationException("В exp.json не найден ай-трекер (тип устройства PathFinder/Gazepoint/...).");
 
 
         // keyboard/mouse uid (если есть)
@@ -1514,7 +1514,7 @@ public partial class MainWindow : Window
             if (string.IsNullOrWhiteSpace(ffmpegExe))
             {
                 MessageBox.Show(
-                    "Для записи (включена запись экрана/камеры и/или есть стимулы SCREEN_RECORD) требуется ffmpeg, но он не найден.\n" +
+                    "Для записи (включена запись экрана/камеры и/или есть стимулы записи экрана) требуется ffmpeg, но он не найден.\n" +
                     "Положи ffmpeg.exe рядом с приложением или добавь в PATH.\n" +
                     "Запись будет пропущена.",
                     "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1634,14 +1634,14 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException("ShimmerGSR указан в exp.json, но не найден в глобальном sensors.json.");
 
             if (string.IsNullOrWhiteSpace(globalShimmer.Params))
-                throw new InvalidOperationException("У глобального ShimmerGSR нет params (нужны name/port).");
+                throw new InvalidOperationException("У глобального ShimmerGSR нет параметров params (нужны name/port).");
 
             // parse ShimmerParams {name, port}
             string btName;
             int port;
             using (var doc = JsonDocument.Parse(globalShimmer.Params))
             {
-                btName = doc.RootElement.GetProperty("name").GetString() ?? throw new InvalidOperationException("ShimmerParams.name пустой");
+                btName = doc.RootElement.GetProperty("name").GetString() ?? throw new InvalidOperationException("Параметр ShimmerParams.name пустой");
                 port = doc.RootElement.GetProperty("port").GetInt32();
             }
 
@@ -1813,7 +1813,7 @@ public partial class MainWindow : Window
                 try
                 {
                     if (!trackerReady)
-                        throw new InvalidOperationException("Попытка показать стимул до READY трекера.");
+                        throw new InvalidOperationException("Попытка показать стимул до готовности трекера.");
 
                     // bool isVideo = IsVideoFile(stimulFile);
 
@@ -1836,7 +1836,7 @@ public partial class MainWindow : Window
                             catch (Exception ex)
                             {
                                 MessageBox.Show(
-                                    "Не удалось запустить запись экрана для стимула SCREEN_RECORD.\n" + ex.Message,
+                                    "Не удалось запустить запись экрана для стимула записи экрана.\n" + ex.Message,
                                     "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
                             }
                         }
@@ -1844,7 +1844,7 @@ public partial class MainWindow : Window
                         {
                             screenRecordFfmpegWarned = true;
                             MessageBox.Show(
-                                "Стимул SCREEN_RECORD требует ffmpeg, но ffmpeg не найден.\n" +
+                                "Стимул записи экрана (SCREEN_RECORD) требует ffmpeg, но ffmpeg не найден.\n" +
                                 "Запись этого стимула будет пропущена.",
                                 "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
                         }
@@ -2179,7 +2179,7 @@ public partial class MainWindow : Window
             {
                 Cleanup();
                 StopVideoUi();
-                tcs.TrySetException(new InvalidOperationException("LibVLC: EncounteredError при воспроизведении видео"));
+                tcs.TrySetException(new InvalidOperationException("LibVLC: ошибка воспроизведения видео"));
             }));
         };
 
@@ -2327,11 +2327,11 @@ public partial class MainWindow : Window
                     return directFile;
             }
 
-            throw new DirectoryNotFoundException($"Stimulus folder not found: {stimulDir}");
+            throw new DirectoryNotFoundException($"Папка стимула не найдена: {stimulDir}");
         }
 
         if (string.IsNullOrWhiteSpace(expectedFilename))
-            throw new FileNotFoundException("Stimulus filename is empty", stimulDir);
+            throw new FileNotFoundException("Имя файла стимула пустое", stimulDir);
 
         // 1) пробуем строго как в exp.json
         var expectedPath = Path.Combine(stimulDir, expectedFilename);
@@ -2356,7 +2356,7 @@ public partial class MainWindow : Window
             .ToList();
 
         if (files.Count == 0)
-            throw new FileNotFoundException($"No files in stimulus folder: {stimulDir}");
+            throw new FileNotFoundException($"В папке стимула нет файлов: {stimulDir}");
 
         var expectedExt = Path.GetExtension(unescaped);
         var sameExt = !string.IsNullOrEmpty(expectedExt)

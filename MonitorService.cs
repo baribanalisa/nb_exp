@@ -27,9 +27,9 @@ public sealed class DisplayMonitor
     public string ToUiString()
     {
         var title = string.IsNullOrWhiteSpace(FriendlyName) ? DeviceName : $"{FriendlyName} ({DeviceName})";
-        var prim = IsPrimary ? " • primary" : "";
+        var prim = IsPrimary ? " • основной" : "";
         var mm = (WidthMm > 0 && HeightMm > 0) ? $" • {WidthMm}×{HeightMm} мм" : "";
-        return $"{Index}: {title} • {WidthPx}×{HeightPx}px{mm}{prim}";
+        return $"{Index}: {title} • {WidthPx}×{HeightPx} пкс{mm}{prim}";
     }
 }
 
@@ -293,7 +293,7 @@ public static class MonitorService
     {
         var mons = GetMonitors();
         if (mons.Count == 0)
-            return new DisplayMonitor { Index = 0, DeviceName = "UNKNOWN" };
+            return new DisplayMonitor { Index = 0, DeviceName = "НЕИЗВЕСТНО" };
 
         if (selectedIndex >= 0 && selectedIndex < mons.Count)
             return mons[selectedIndex];
