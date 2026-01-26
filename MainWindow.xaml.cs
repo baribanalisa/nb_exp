@@ -1950,17 +1950,19 @@ public partial class MainWindow : Window
                             try { await screenRecord.StopAsync(); } catch { }
                         }
 
-                        hotkeyScope?.Dispose();
-
+                        // Сначала восстановим окно, потом снимем global hotkeys.
                         if (prevWindowState != null)
                         {
                             try
                             {
                                 WindowState = prevWindowState.Value;
                                 Activate();
+                                Focus();
                             }
                             catch { }
                         }
+
+                        hotkeyScope?.Dispose();
 
                         if (isScreenRecord)
                             ShowText("");
