@@ -394,13 +394,18 @@ public partial class AnalysisWindow : Window
 
     private void AoiDeleteLast_Click(object sender, RoutedEventArgs e)
     {
-        if (_aoiList.Count > 0)
+        if (_aoiList.Count == 0)
         {
-            _aoiList.RemoveAt(_aoiList.Count - 1);
-            SaveAoisForStimulus();
-            RecalculateAoiMetrics();
-            AoiOverlay.SetData(_aoiList, _cachedAoiMetrics);
+            return;
         }
+
+        if (AoiResultsGrid?.SelectedItem is AoiDisplayItem selectedItem)
+        {
+            RemoveAoi(selectedItem.SourceAoi);
+            return;
+        }
+
+        RemoveAoi(_aoiList[^1]);
     }
     private List<HeatmapSeries> BuildHeatmapSeriesForCurrentStim(float tMin, float tMax)
     {
@@ -2901,9 +2906,21 @@ public partial class AnalysisWindow : Window
     {
         if (sender is Button btn && btn.DataContext is AoiDisplayItem item)
         {
-            _aoiList.Remove(item.SourceAoi);
-            FinishAoiDrawing(); // Пересчитать и обновить
+            RemoveAoi(item.SourceAoi);
         }
+    }
+
+    private void RemoveAoi(AoiElement aoi)
+    {
+        if (!_aoiList.Remove(aoi))
+        {
+            return;
+        }
+
+        SaveAoisForStimulus();
+        RecalculateAoiMetrics();
+        AoiOverlay.SetData(_aoiList, _cachedAoiMetrics);
+        RefreshAoiGrid();
     }
     // Загрузка/Инициализация списка AOI
     private void LoadAoisForStimulus(string stimUid)
