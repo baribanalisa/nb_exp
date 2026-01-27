@@ -1826,6 +1826,9 @@ public partial class AnalysisWindow : Window
         var currentTabMode = _currentVizSettings.Mode; 
         // ============================================================================
 
+        if (_isAoiMode && _currentStimUid != null)
+            SaveAoisForStimulus();
+
         _currentStimUid = st.Uid;
         _currentVizSettings = LoadStimulusVisualizationSettings(st.Uid);
         UpdateKgrChartsForStim(st.Uid);
@@ -1845,6 +1848,9 @@ public partial class AnalysisWindow : Window
         ClearVisualizationOverlays();
 
         EmptyHint.Visibility = Visibility.Collapsed;
+
+        if (_isAoiMode && _currentStimUid != null)
+            LoadAoisForStimulus(_currentStimUid);
 
         // сброс виджетов
         PreviewImage.Source = null;
