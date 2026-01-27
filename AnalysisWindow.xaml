@@ -511,7 +511,8 @@
                             Background="White"
                             BorderThickness="1" BorderBrush="#E5E7EB"
                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                            ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            PreviewKeyDown="AoiResultsGrid_PreviewKeyDown">
                         <DataGrid.Columns>
                             <!-- 1. Цвет -->
                             <DataGridTemplateColumn Header="Цвет" Width="40">

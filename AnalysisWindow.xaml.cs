@@ -2910,6 +2910,16 @@ public partial class AnalysisWindow : Window
         }
     }
 
+    private void AoiResultsGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Delete && AoiResultsGrid?.SelectedItem is AoiDisplayItem item)
+        {
+            RemoveAoi(item.SourceAoi);
+            e.Handled = true;
+        }
+    }
+
+
     private void RemoveAoi(AoiElement aoi)
     {
         if (!_aoiList.Remove(aoi))
