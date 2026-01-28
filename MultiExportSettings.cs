@@ -13,6 +13,15 @@ public enum ExportDataFormat
     XLSX
 }
 
+/// <summary>
+/// Формат изображений для экспорта
+/// </summary>
+public enum ExportImageFormat
+{
+    PNG,
+    JPG
+}
+
 public sealed class MultiExportSettings
 {
     public string OutputDir { get; set; } =
@@ -26,6 +35,11 @@ public sealed class MultiExportSettings
     /// Формат данных для экспорта (CSV или XLSX)
     /// </summary>
     public ExportDataFormat DataFormat { get; set; } = ExportDataFormat.CSV;
+
+    /// <summary>
+    /// Формат изображений для экспорта (PNG или JPG)
+    /// </summary>
+    public ExportImageFormat ImageFormat { get; set; } = ExportImageFormat.PNG;
 
     public bool ExportSource { get; set; } = true;
     public bool ExportRaw { get; set; } = true;

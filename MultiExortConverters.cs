@@ -50,6 +50,31 @@ public class DataFormatConverter : IValueConverter
 }
 
 /// <summary>
+/// Конвертер для отображения формата изображения
+/// </summary>
+public class ImageFormatConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is ExportImageFormat format)
+        {
+            return format switch
+            {
+                ExportImageFormat.PNG => "PNG",
+                ExportImageFormat.JPG => "JPG",
+                _ => value.ToString()
+            };
+        }
+        return value?.ToString() ?? "";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
 /// Конвертер null -> Visible
 /// </summary>
 public class NullToVisibleConverter : IValueConverter

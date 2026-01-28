@@ -12,6 +12,11 @@ public sealed class MultiExportOptions
     /// </summary>
     public ExportDataFormat DataFormat { get; set; } = ExportDataFormat.CSV;
 
+    /// <summary>
+    /// Формат изображений для экспорта (PNG или JPG)
+    /// </summary>
+    public ExportImageFormat ImageFormat { get; set; } = ExportImageFormat.PNG;
+
     public bool ExportSource { get; set; }
     public bool ExportRaw { get; set; }
     public bool ExportActions { get; set; }

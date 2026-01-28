@@ -2,6 +2,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -815,28 +817,56 @@ public sealed class MultiExportService
 
     private void ExportPrebuiltImageIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, string type, Action<string> report)
     {
-        var imagePath = FindPrebuiltImage(rr.Uid, st.Uid, type);
-        if (imagePath == null) return;
+        var preferredExt = GetImageExtension(options.ImageFormat);
+        var image = FindPrebuiltImage(rr.Uid, st.Uid, type, preferredExt);
+        if (image == null) return;
 
-        var ext = Path.GetExtension(imagePath).TrimStart('.');
-        var name = BuildFileName(options, now, rr, st, type, ext);
+        var (imagePath, foundExt) = image.Value;
+        var name = BuildFileName(options, now, rr, st, type, preferredExt);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        File.Copy(imagePath, dst, overwrite: true);
-    }
-
-    private string? FindPrebuiltImage(string resultUid, string stimUid, string type)
-    {
-        var patterns = new[]
+        if (string.Equals(foundExt, preferredExt, StringComparison.OrdinalIgnoreCase))
         {
-            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}.png"),
-            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}.jpg"),
-            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}_image.png"),
-            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}_image.jpg"),
-        };
+            File.Copy(imagePath, dst, overwrite: true);
+            return;
+        }
 
-        return patterns.FirstOrDefault(File.Exists);
+        using var img = Image.FromFile(imagePath);
+        img.Save(dst, GetImageSaveFormat(options.ImageFormat));
     }
+
+    private (string path, string extension)? FindPrebuiltImage(string resultUid, string stimUid, string type, string preferredExt)
+    {
+        foreach (var path in GetPrebuiltImageCandidates(resultUid, stimUid, type, preferredExt))
+        {
+            if (File.Exists(path))
+                return (path, preferredExt);
+        }
+
+        foreach (var ext in new[] { "png", "jpg", "jpeg" }
+                     .Where(ext => !string.Equals(ext, preferredExt, StringComparison.OrdinalIgnoreCase)))
+        {
+            foreach (var path in GetPrebuiltImageCandidates(resultUid, stimUid, type, ext))
+            {
+                if (File.Exists(path))
+                    return (path, ext);
+            }
+        }
+
+        return null;
+    }
+
+    private IEnumerable<string> GetPrebuiltImageCandidates(string resultUid, string stimUid, string type, string ext)
+    {
+        yield return Path.Combine(_resultsDir, resultUid, stimUid, $"{type}.{ext}");
+        yield return Path.Combine(_resultsDir, resultUid, stimUid, $"{type}_image.{ext}");
+    }
+
+    private static string GetImageExtension(ExportImageFormat format)
+        => format == ExportImageFormat.JPG ? "jpg" : "png";
+
+    private static ImageFormat GetImageSaveFormat(ExportImageFormat format)
+        => format == ExportImageFormat.JPG ? ImageFormat.Jpeg : ImageFormat.Png;
 
     private void ExportEdfIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, Action<string> report)
     {

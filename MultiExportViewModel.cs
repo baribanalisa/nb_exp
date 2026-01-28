@@ -29,6 +29,7 @@ public sealed class MultiExportViewModel : ObservableObject
 
     public Array Modes { get; } = Enum.GetValues(typeof(MultiExportMode));
     public Array DataFormats { get; } = Enum.GetValues(typeof(ExportDataFormat));
+    public Array ImageFormats { get; } = Enum.GetValues(typeof(ExportImageFormat));
 
     private string _outputDir = "";
     public string OutputDir
@@ -105,6 +106,16 @@ public sealed class MultiExportViewModel : ObservableObject
         set => SetProperty(ref _dataFormat, value);
     }
 
+    private ExportImageFormat _imageFormat = ExportImageFormat.PNG;
+    /// <summary>
+    /// Формат изображений для экспорта (PNG или JPG)
+    /// </summary>
+    public ExportImageFormat ImageFormat
+    {
+        get => _imageFormat;
+        set => SetProperty(ref _imageFormat, value);
+    }
+
     // Checkbox bindings
     private bool _exportSource = true;
     public bool ExportSource { get => _exportSource; set => SetProperty(ref _exportSource, value); }
@@ -157,6 +168,10 @@ public sealed class MultiExportViewModel : ObservableObject
         TemplateIsValid &&
         !string.IsNullOrWhiteSpace(OutputDir);
 
+    public int SelectedStimuliCount => Stimuli.Count(s => s.IsSelected);
+
+    public int SelectedResultsCount => Results.Count(r => r.IsSelected);
+
     public MultiExportViewModel(string expDir, IReadOnlyCollection<string> initialSelectedResultUids)
     {
         ExpDir = expDir;
@@ -167,6 +182,7 @@ public sealed class MultiExportViewModel : ObservableObject
         _filenameTemplate = saved.FilenameTemplate;
         _mode = saved.Mode;
         _dataFormat = saved.DataFormat;
+        _imageFormat = saved.ImageFormat;
         _exportSource = saved.ExportSource;
         _exportRaw = saved.ExportRaw;
         _exportActions = saved.ExportActions;
@@ -201,7 +217,7 @@ public sealed class MultiExportViewModel : ObservableObject
         ValidateTemplate();
 
         IsBusy = false;
-        StatusText = $"Готово: стимулы={Stimuli.Count}, результаты={Results.Count}";
+        UpdateStatusText();
         OnPropertyChanged(nameof(CanStartExport));
     }
 
@@ -234,6 +250,7 @@ public sealed class MultiExportViewModel : ObservableObject
             FilenameTemplate = FilenameTemplate,
             Mode = Mode,
             DataFormat = DataFormat,
+            ImageFormat = ImageFormat,
 
             ExportSource = ExportSource,
             ExportRaw = ExportRaw,
@@ -253,6 +270,7 @@ public sealed class MultiExportViewModel : ObservableObject
             FilenameTemplate = FilenameTemplate,
             Mode = Mode,
             DataFormat = DataFormat,
+            ImageFormat = ImageFormat,
 
             ExportSource = ExportSource,
             ExportRaw = ExportRaw,
@@ -273,13 +291,17 @@ public sealed class MultiExportViewModel : ObservableObject
     public void SetAllStimuliSelected(bool selected)
     {
         foreach (var s in Stimuli) s.IsSelected = selected;
+        OnPropertyChanged(nameof(SelectedStimuliCount));
         OnPropertyChanged(nameof(CanStartExport));
+        UpdateStatusText();
     }
 
     public void SetAllResultsSelected(bool selected)
     {
         foreach (var r in Results) r.IsSelected = selected;
+        OnPropertyChanged(nameof(SelectedResultsCount));
         OnPropertyChanged(nameof(CanStartExport));
+        UpdateStatusText();
     }
 
     private void ApplyConstraints()
@@ -322,7 +344,12 @@ public sealed class MultiExportViewModel : ObservableObject
             if (!IsImageFile(fn)) continue;
 
             var item = new MultiExportStimulusItem(st, isSelected: true, stimuliDir);
-            item.PropertyChanged += (_, __) => OnPropertyChanged(nameof(CanStartExport));
+            item.PropertyChanged += (_, __) =>
+            {
+                OnPropertyChanged(nameof(CanStartExport));
+                OnPropertyChanged(nameof(SelectedStimuliCount));
+                UpdateStatusText();
+            };
             Stimuli.Add(item);
         }
     }
@@ -354,7 +381,12 @@ public sealed class MultiExportViewModel : ObservableObject
             bool preselect = _initialSelectedResultUids.Count == 0 || _initialSelectedResultUids.Contains(uid);
 
             var item = new MultiExportResultItem(uid, rf, preselect);
-            item.PropertyChanged += (_, __) => OnPropertyChanged(nameof(CanStartExport));
+            item.PropertyChanged += (_, __) =>
+            {
+                OnPropertyChanged(nameof(CanStartExport));
+                OnPropertyChanged(nameof(SelectedResultsCount));
+                UpdateStatusText();
+            };
             items.Add(item);
         }
 
@@ -369,5 +401,10 @@ public sealed class MultiExportViewModel : ObservableObject
     {
         var ext = Path.GetExtension(pathOrName).ToLowerInvariant();
         return ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp";
+    }
+
+    private void UpdateStatusText()
+    {
+        StatusText = $"Готово: стимулы={SelectedStimuliCount}/{Stimuli.Count}, результаты={SelectedResultsCount}/{Results.Count}";
     }
 }

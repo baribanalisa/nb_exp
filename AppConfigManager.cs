@@ -345,6 +345,11 @@ public static MultiExportSettings LoadMultiExportSettings()
         if (Enum.TryParse<ExportDataFormat>(formatStr, ignoreCase: true, out var parsedFormat))
             s.DataFormat = parsedFormat;
 
+        // Загружаем ImageFormat
+        var imageFormatStr = ReadString(me, "image-format", s.ImageFormat.ToString());
+        if (Enum.TryParse<ExportImageFormat>(imageFormatStr, ignoreCase: true, out var parsedImageFormat))
+            s.ImageFormat = parsedImageFormat;
+
         s.ExportSource = ReadBool(me["export-source"], s.ExportSource);
         s.ExportRaw = ReadBool(me["export-raw"], s.ExportRaw);
         s.ExportActions = ReadBool(me["export-actions"], s.ExportActions);
@@ -385,6 +390,7 @@ public static void SaveMultiExportSettings(MultiExportSettings settings)
         ["filename-template"] = settings.FilenameTemplate,
         ["mode"] = settings.Mode.ToString(),
         ["data-format"] = settings.DataFormat.ToString(),
+        ["image-format"] = settings.ImageFormat.ToString(),
 
         ["export-source"] = settings.ExportSource,
         ["export-raw"] = settings.ExportRaw,
@@ -470,5 +476,4 @@ public static void SaveMultiExportSettings(MultiExportSettings settings)
         return string.IsNullOrWhiteSpace(s) ? fallback : s;
     }
 }
-
 
