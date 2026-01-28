@@ -70,9 +70,9 @@ public sealed class MultiExportResultItem : ObservableObject
     public string Name { get; }
 
     /// <summary>
-    /// Отображаемое имя (Имя или UID если имя отсутствует)
+    /// Отображаемое имя (Имя или «Без имени» если имя отсутствует)
     /// </summary>
-    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Uid : Name;
+    public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "Без имени" : Name;
 
     /// <summary>
     /// Полная строка для отображения: Имя | Дата | Длительность

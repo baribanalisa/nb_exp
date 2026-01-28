@@ -10,10 +10,106 @@
         Style="{StaticResource ModernWindowStyle}">
 
     <Window.Resources>
+        <SolidColorBrush x:Key="BgBrush" Color="#FFF7F7F9"/>
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFFFF"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#FF111827"/>
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#FF6B7280"/>
+        <SolidColorBrush x:Key="BorderColorBrush" Color="#FFE5E7EB"/>
+        <SolidColorBrush x:Key="BorderBrushSoft" Color="#1A000000"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#2563EB"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="AccentPressedBrush" Color="#1E40AF"/>
+        <SolidColorBrush x:Key="HoverBrush" Color="#F3F4F6"/>
+
+        <Style x:Key="ModernWindowStyle" TargetType="Window">
+            <Setter Property="Background" Value="{StaticResource BgBrush}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+        </Style>
+
+        <Style x:Key="CardBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="18"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        </Style>
+
+        <Style x:Key="FormLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="BaseButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="14,9"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderColorBrush}"/>
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BorderColorBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+            <Setter Property="Padding" Value="12,7"/>
+        </Style>
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentHoverBrush}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="{StaticResource AccentPressedBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentPressedBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <local:StimulusDisplayNameConverter x:Key="StimulusDisplayNameConverter"/>
-        
-        <!-- Конвертер для форматирования ExportDataFormat -->
         <local:DataFormatConverter x:Key="DataFormatConverter"/>
+        <local:NullToVisibleConverter x:Key="NullToVisibleConverter"/>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </Window.Resources>
 
     <Grid Margin="20">
@@ -209,11 +305,8 @@
                                                            FontWeight="SemiBold"
                                                            FontSize="13"
                                                            Foreground="{StaticResource TextBrush}"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Text="{Binding Uid}"
-                                                           FontSize="10"
-                                                           Foreground="{StaticResource MutedTextBrush}"
-                                                           Visibility="{Binding Name, Converter={StaticResource StringNotEmptyToVisibilityConverter}}"/>
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding Uid}"/>
                                             </StackPanel>
                                             
                                             <!-- Дата -->
@@ -341,6 +434,11 @@
                               BorderThickness="0"
                               Background="Transparent"
                               Padding="10,8">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource DataFormatConverter}}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
                         <ComboBox.Resources>
                             <Style TargetType="ComboBoxItem">
                                 <Setter Property="Padding" Value="10,8"/>
