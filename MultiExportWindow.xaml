@@ -146,6 +146,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Заголовок -->
@@ -370,14 +371,53 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                        <CheckBox Content="Исходные данные (bin)" IsChecked="{Binding ExportSource}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Сырые данные взгляда" IsChecked="{Binding ExportRaw}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Действия" IsChecked="{Binding ExportActions}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Области интереса (JSON)" IsChecked="{Binding ExportAoi}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Изображение взгляда" IsChecked="{Binding ExportGazeImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Изображение тепловой карты" IsChecked="{Binding ExportHeatImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
-                    </WrapPanel>
+                    <!-- Чекбоксы в красивой сетке -->
+                    <Grid Grid.Column="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <CheckBox Grid.Row="0" Grid.Column="0" 
+                                  Content="Исходные данные (bin)" 
+                                  IsChecked="{Binding ExportSource}" 
+                                  IsEnabled="{Binding CanExportRawOrSource}" 
+                                  Margin="0,0,10,8"/>
+                        
+                        <CheckBox Grid.Row="0" Grid.Column="1" 
+                                  Content="Сырые данные взгляда" 
+                                  IsChecked="{Binding ExportRaw}" 
+                                  IsEnabled="{Binding CanExportRawOrSource}" 
+                                  Margin="0,0,10,8"/>
+                        
+                        <CheckBox Grid.Row="1" Grid.Column="0" 
+                                  Content="Действия" 
+                                  IsChecked="{Binding ExportActions}" 
+                                  IsEnabled="{Binding CanExportRawOrSource}" 
+                                  Margin="0,0,10,8"/>
+                        
+                        <CheckBox Grid.Row="1" Grid.Column="1" 
+                                  Content="Области интереса (JSON)" 
+                                  IsChecked="{Binding ExportAoi}" 
+                                  Margin="0,0,10,8"/>
+                        
+                        <CheckBox Grid.Row="2" Grid.Column="0" 
+                                  Content="Изображение взгляда" 
+                                  IsChecked="{Binding ExportGazeImage}" 
+                                  IsEnabled="{Binding CanExportImages}" 
+                                  Margin="0,0,10,8"/>
+                        
+                        <CheckBox Grid.Row="2" Grid.Column="1" 
+                                  Content="Изображение тепловой карты" 
+                                  IsChecked="{Binding ExportHeatImage}" 
+                                  IsEnabled="{Binding CanExportImages}" 
+                                  Margin="0,0,10,8"/>
+                    </Grid>
 
                     <Button Grid.Column="1"
                             Content="Экспорт"
@@ -387,11 +427,14 @@
                             Style="{StaticResource PrimaryButtonStyle}"
                             IsEnabled="{Binding CanStartExport}"/>
                 </Grid>
-
-                <TextBlock Grid.Row="6" Grid.ColumnSpan="3" Margin="0,10,0,0"
-                           Foreground="{StaticResource TextBrush}"
-                           Text="{Binding StatusText}"/>
                 </Grid>
+
+                <!-- Статус в самом низу -->
+                <TextBlock Grid.Row="3" 
+                           Margin="0,16,0,0"
+                           Foreground="{StaticResource TextBrush}"
+                           FontSize="12"
+                           Text="{Binding StatusText}"/>
             </Grid>
         </Border>
     </Grid>

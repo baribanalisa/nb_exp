@@ -84,9 +84,6 @@ public sealed class MultiExportService
         if (options.Mode == MultiExportMode.AllInOne && (options.ExportGazeImage || options.ExportHeatImage))
             throw new InvalidOperationException("В режиме «Все в одном» недоступен экспорт изображений.");
 
-        if (options.ExportEdf && (!_hasEeg || options.Mode != MultiExportMode.SeparateFiles))
-            throw new InvalidOperationException("EDF доступен только в режиме «Отдельные файлы» и только если в эксперименте есть ЭЭГ.");
-
         var now = DateTime.Now;
 
         // Подготовим lookup по UID результатов
@@ -158,9 +155,6 @@ public sealed class MultiExportService
 
                 if (options.ExportHeatImage)
                     ExportPrebuiltImageIfExists(options, now, rr, st, "heat", report);
-
-                if (options.ExportEdf)
-                    ExportEdfIfExists(options, now, rr, report);
             }
         }
     }
