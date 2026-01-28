@@ -59,7 +59,7 @@ public class AoiMetricsResult
     // Существовавшие
     public int FixationCount { get; set; }
     public double TotalDwellTime { get; set; }
-    public double TimeToFirstFixation { get; set; } = -1;
+    public double TimeToFirstFixation { get; set; } = 0;
     public int RevisitCount { get; set; }
     public double AverageFixationDuration { get; set; }
 
@@ -98,7 +98,7 @@ public class AoiDisplayItem : System.ComponentModel.INotifyPropertyChanged
     // Свойства для колонок
     public int FixationCount => _metrics?.FixationCount ?? 0;
     public double TotalDwellTime => _metrics?.TotalDwellTime ?? 0;
-    public double TimeToFirstFixation => _metrics?.TimeToFirstFixation ?? -1;
+    public double TimeToFirstFixation => _metrics?.TimeToFirstFixation ?? 0;
     public int RevisitCount => _metrics?.RevisitCount ?? 0;
     public double AvgFixationDuration => _metrics?.AverageFixationDuration ?? 0;
     

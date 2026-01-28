@@ -3134,9 +3134,10 @@ public partial class AnalysisWindow : Window
             int totalFix = 0;
             double totalDur = 0;
             
-            double firstFixStartTime = -1;
+            double firstFixStartTime = 0;
             double firstFixDuration = 0;
             int fixationsBefore = 0;
+            bool hasFirstFixation = false;
             
             int visits = 0;
             bool wasIn = false;
@@ -3167,11 +3168,12 @@ public partial class AnalysisWindow : Window
                             foundFirstInUser = true;
                             // Если это первая глобальная или мы усредняем? 
                             // Для одного испытуемого:
-                            if (firstFixStartTime == -1 || fix.StartSec < firstFixStartTime)
+                            if (!hasFirstFixation || fix.StartSec < firstFixStartTime)
                             {
                                 firstFixStartTime = fix.StartSec;
                                 firstFixDuration = fix.DurSec;
                                 fixationsBefore = userFixCounter; // Сохраняем сколько было ДО
+                                hasFirstFixation = true;
                             }
                         }
                         else
@@ -3218,11 +3220,11 @@ public partial class AnalysisWindow : Window
             m.RevisitCount = Math.Max(0, visits - 1);
             
             // Время до первой фиксации
-            m.TimeToFirstFixation = firstFixStartTime;
-            m.TimeBeforeFirstFixation = firstFixStartTime; // Дублирует TTFF по смыслу, но для таблицы
+            m.TimeToFirstFixation = hasFirstFixation ? firstFixStartTime : 0;
+            m.TimeBeforeFirstFixation = hasFirstFixation ? firstFixStartTime : 0; // Дублирует TTFF по смыслу, но для таблицы
             
-            m.FixationsBeforeFirst = (firstFixStartTime != -1) ? fixationsBefore : 0;
-            m.FirstFixationDuration = (firstFixStartTime != -1) ? firstFixDuration : 0;
+            m.FixationsBeforeFirst = hasFirstFixation ? fixationsBefore : 0;
+            m.FirstFixationDuration = hasFirstFixation ? firstFixDuration : 0;
 
             if (totalFix > 0) 
                 m.AverageFixationDuration = totalDur / totalFix;
