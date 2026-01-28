@@ -39,12 +39,12 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
             $"-c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p " +
             $"\"{outPath}\"";
 
-        // <- теперь компилится (есть перегрузка StartAsync(exe,args))
         return StartAsync(ffmpegExe, args);
     }
 
     /// <summary>
-    /// Камера (+ звук) live-mux сразу в один файл (как в твоей консольной команде).
+    /// Камера (+ звук) live-mux сразу в один файл.
+    /// Использует fallback-логику: если первая попытка не удалась, пробует без framerate.
     /// </summary>
     public static async Task<FfmpegRecorder> StartCameraAsync(
         string ffmpegExe,
@@ -52,44 +52,100 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
         string outputPath,
         bool recordAudio,
         string? audioDeviceName,
-        string? framerate = null,
-        string? inputFormat = null,
-        string? videoSize = null,
-        string? rtbufsize = null)
-
+        int fps = 30)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
         var cam = (cameraDeviceName ?? "").Replace("\"", "").Trim();
         var mic = (audioDeviceName ?? "").Replace("\"", "").Trim();
 
-        var fps = string.IsNullOrWhiteSpace(framerate) ? "30" : framerate.Trim();
-        var format = string.IsNullOrWhiteSpace(inputFormat) ? null : inputFormat.Trim();
-        var size = string.IsNullOrWhiteSpace(videoSize) ? null : videoSize.Trim();
-        var rtbuf = string.IsNullOrWhiteSpace(rtbufsize) ? "256M" : rtbufsize.Trim();
-
-
-        // ВАЖНО: делаем ровно как в PowerShell: один dshow input video:audio
+        // Формируем input spec для dshow
         var inputSpec = (recordAudio && !string.IsNullOrWhiteSpace(mic))
             ? $"video=\"{cam}\":audio=\"{mic}\""
             : $"video=\"{cam}\"";
 
-        var inputFormatArg = string.IsNullOrWhiteSpace(format) ? "" : $"-input_format {format} ";
-        var videoSizeArg = string.IsNullOrWhiteSpace(size) ? "" : $"-video_size {size} ";
+        // Аудио-кодек параметры
+        var audioParams = (recordAudio && !string.IsNullOrWhiteSpace(mic))
+            ? "-c:a aac -b:a 128k -ar 48000 -ac 2 -shortest "
+            : "";
 
-        var args =
-            $"-y -hide_banner -loglevel error " +
-            $"-f dshow -rtbufsize {rtbuf} -framerate {fps} {inputFormatArg}{videoSizeArg}-i {inputSpec} " +
+        // ========== Попытка 1: стандартные параметры с framerate ==========
+        // НЕ используем input_format, video_size, pixel_format - даём FFmpeg договориться с камерой
+        var args1 =
+            $"-y -hide_banner -loglevel warning " +
+            $"-f dshow -rtbufsize 512M -thread_queue_size 1024 -framerate {fps} " +
+            $"-i {inputSpec} " +
             $"-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p " +
-            (recordAudio && !string.IsNullOrWhiteSpace(mic)
-                ? "-c:a aac -b:a 128k -ar 48000 -ac 2 -shortest "
-                : "") +
+            audioParams +
             $"\"{outputPath}\"";
 
-        return await StartAsync(ffmpegExe, args, "записи камеры").ConfigureAwait(false);
+        try
+        {
+            return await StartAsyncWithValidation(ffmpegExe, args1, "записи камеры (попытка 1)").ConfigureAwait(false);
+        }
+        catch (Exception ex1)
+        {
+            Debug.WriteLine($"[FfmpegRecorder] Попытка 1 не удалась: {ex1.Message}");
+
+            // ========== Попытка 2: без явного framerate (камера сама выберет) ==========
+            var args2 =
+                $"-y -hide_banner -loglevel warning " +
+                $"-f dshow -rtbufsize 512M -thread_queue_size 1024 " +
+                $"-i {inputSpec} " +
+                $"-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p " +
+                audioParams +
+                $"\"{outputPath}\"";
+
+            try
+            {
+                return await StartAsyncWithValidation(ffmpegExe, args2, "записи камеры (попытка 2)").ConfigureAwait(false);
+            }
+            catch (Exception ex2)
+            {
+                Debug.WriteLine($"[FfmpegRecorder] Попытка 2 не удалась: {ex2.Message}");
+
+                // ========== Попытка 3: минимальные параметры ==========
+                var args3 =
+                    $"-y -hide_banner -loglevel warning " +
+                    $"-f dshow -i {inputSpec} " +
+                    $"-c:v libx264 -preset veryfast -crf 23 " +
+                    audioParams +
+                    $"\"{outputPath}\"";
+
+                try
+                {
+                    return await StartAsyncWithValidation(ffmpegExe, args3, "записи камеры (попытка 3)").ConfigureAwait(false);
+                }
+                catch (Exception ex3)
+                {
+                    // Все попытки провалились - бросаем информативное исключение
+                    var errorMsg = $"Не удалось запустить запись камеры после 3 попыток.\n\n" +
+                                   $"Камера: {cam}\n" +
+                                   $"Ошибка 1: {ShortError(ex1)}\n" +
+                                   $"Ошибка 2: {ShortError(ex2)}\n" +
+                                   $"Ошибка 3: {ShortError(ex3)}\n\n" +
+                                   $"Возможные причины:\n" +
+                                   $"• Камера занята другим приложением\n" +
+                                   $"• Камера не поддерживается\n" +
+                                   $"• Устаревшая версия FFmpeg\n\n" +
+                                   $"Рекомендация: положите ffmpeg.exe версии 6.0+ рядом с приложением.";
+
+                    throw new InvalidOperationException(errorMsg, ex3);
+                }
+            }
+        }
     }
 
-    // Перегрузка, чтобы не чинить все места, где было StartAsync(exe,args)
+    private static string ShortError(Exception ex)
+    {
+        var msg = ex.Message;
+        // Обрезаем слишком длинные сообщения
+        if (msg.Length > 200)
+            msg = msg.Substring(0, 200) + "...";
+        return msg;
+    }
+
+    // Перегрузка для обратной совместимости
     private static Task<FfmpegRecorder> StartAsync(string exe, string args)
         => StartAsync(exe, args, "записи");
 
@@ -107,7 +163,7 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
         var p = Process.Start(psi) ?? throw new InvalidOperationException($"Не удалось запустить ffmpeg для {what}.");
         var rec = new FfmpegRecorder(p);
 
-        // stdout просто “сливаем”, чтобы не забить буферы
+        // stdout просто "сливаем", чтобы не забить буферы
         _ = Task.Run(async () => { try { await p.StandardOutput.ReadToEndAsync().ConfigureAwait(false); } catch { } });
 
         try { p.BeginErrorReadLine(); } catch { }
@@ -123,6 +179,46 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
             throw new InvalidOperationException($"ffmpeg завершился сразу при старте {what}:\n{err}");
         }
 
+        return rec;
+    }
+
+    /// <summary>
+    /// Запуск с более длительной проверкой — ждём 1.5 секунды и проверяем, что файл создаётся.
+    /// </summary>
+    private static async Task<FfmpegRecorder> StartAsyncWithValidation(string exe, string args, string what)
+    {
+        var psi = new ProcessStartInfo(exe, args)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+        };
+
+        Debug.WriteLine($"[FfmpegRecorder] Starting: {exe} {args}");
+
+        var p = Process.Start(psi) ?? throw new InvalidOperationException($"Не удалось запустить ffmpeg для {what}.");
+        var rec = new FfmpegRecorder(p);
+
+        // stdout просто "сливаем"
+        _ = Task.Run(async () => { try { await p.StandardOutput.ReadToEndAsync().ConfigureAwait(false); } catch { } });
+
+        try { p.BeginErrorReadLine(); } catch { }
+
+        // Ждём 1.5 секунды и проверяем
+        await Task.Delay(1500).ConfigureAwait(false);
+
+        if (p.HasExited)
+        {
+            var err = rec.StderrText;
+            if (string.IsNullOrWhiteSpace(err))
+                err = $"(stderr пустой, exitCode={p.ExitCode})";
+
+            throw new InvalidOperationException($"ffmpeg завершился при старте {what}:\n{err}");
+        }
+
+        Debug.WriteLine($"[FfmpegRecorder] Started successfully: {what}");
         return rec;
     }
 

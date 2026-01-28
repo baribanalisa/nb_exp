@@ -9,72 +9,207 @@ namespace NeuroBureau.Experiment;
 
 internal static class CameraDeviceProvider
 {
-    public static string? FindFfmpegExe(bool allowPath)
+    /// <summary>
+    /// Ищет ffmpeg.exe: сначала рядом с приложением, потом в PATH.
+    /// </summary>
+    public static string? FindFfmpegExe()
     {
+        // 1. Рядом с приложением
         var local1 = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
         if (File.Exists(local1)) return local1;
 
+        // 2. В подпапке ffmpeg
         var local2 = Path.Combine(AppContext.BaseDirectory, "ffmpeg", "ffmpeg.exe");
         if (File.Exists(local2)) return local2;
 
-        if (allowPath)
+        // 3. В подпапке bin
+        var local3 = Path.Combine(AppContext.BaseDirectory, "bin", "ffmpeg.exe");
+        if (File.Exists(local3)) return local3;
+
+        // 4. В PATH
+        try
         {
-            try
+            var psi = new ProcessStartInfo("where", "ffmpeg")
             {
-                var psi = new ProcessStartInfo("where", "ffmpeg")
-                {
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var p = Process.Start(psi);
-                if (p == null) return null;
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return null;
 
-                var line = p.StandardOutput.ReadLine();
-                p.WaitForExit(1500);
+            var line = p.StandardOutput.ReadLine();
+            p.WaitForExit(1500);
 
-                if (!string.IsNullOrWhiteSpace(line) && File.Exists(line.Trim()))
-                    return line.Trim();
-            }
-            catch { }
+            if (!string.IsNullOrWhiteSpace(line) && File.Exists(line.Trim()))
+                return line.Trim();
         }
+        catch { }
 
         return null;
     }
 
-    public static async Task<List<CameraDeviceInfo>> GetVideoDevicesAsync(string ffmpegExe)
+    /// <summary>
+    /// Получает версию FFmpeg (например "6.1.1" или "n7.0").
+    /// </summary>
+    public static async Task<string?> GetFfmpegVersionAsync(string ffmpegExe)
     {
-        var text = await GetDshowListingAsync(ffmpegExe);
-        var res = ParseVideoDevices(text);
-        if (res.Count > 0) return res;
+        try
+        {
+            var psi = new ProcessStartInfo(ffmpegExe, "-version")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
 
-        var all = ParseAllQuotedDevices(text);
-        var fallback = new List<CameraDeviceInfo>();
+            using var p = Process.Start(psi);
+            if (p == null) return null;
 
-        foreach (var d in all)
-            if (!IsLikelyAudio(d)) fallback.Add(new CameraDeviceInfo(d, null));
+            var output = await p.StandardOutput.ReadToEndAsync();
+            p.WaitForExit(2000);
 
-        // fallback: если фильтр “съел всё” — верни как было (чтобы не пусто)
-        if (fallback.Count > 0) return fallback;
+            // Ищем версию: "ffmpeg version 6.1.1" или "ffmpeg version n7.0-..."
+            var match = Regex.Match(output, @"ffmpeg version (\S+)", RegexOptions.IgnoreCase);
+            if (match.Success)
+                return match.Groups[1].Value;
 
-        var raw = new List<CameraDeviceInfo>();
-        foreach (var d in all) raw.Add(new CameraDeviceInfo(d, null));
-        return raw;
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
+    /// <summary>
+    /// Проверяет, является ли версия FFmpeg достаточно новой (>= 5.0).
+    /// </summary>
+    public static bool IsVersionSupported(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version)) return false;
+
+        // Пробуем извлечь major версию
+        var match = Regex.Match(version, @"^n?(\d+)");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var major))
+        {
+            return major >= 5; // FFmpeg 5.0+ поддерживает все нужные опции
+        }
+
+        return true; // Если не распознали - даём шанс
+    }
+
+    /// <summary>
+    /// Получает список видео-устройств (камер).
+    /// </summary>
+    public static async Task<List<string>> GetVideoDevicesAsync(string ffmpegExe)
+    {
+        var all = await GetAllQuotedDevicesAsync(ffmpegExe);
+        var res = new List<string>();
+
+        foreach (var d in all)
+            if (!IsLikelyAudio(d)) res.Add(d);
+
+        // fallback: если фильтр "съел всё" — верни как было
+        return res.Count > 0 ? res : all;
+    }
+
+    /// <summary>
+    /// Получает список аудио-устройств (микрофонов).
+    /// </summary>
     public static async Task<List<string>> GetAudioDevicesAsync(string ffmpegExe)
     {
-        var text = await GetDshowListingAsync(ffmpegExe);
-        var parsed = ParseAudioDevices(text);
-        if (parsed.Count > 0) return parsed;
-
-        var all = ParseAllQuotedDevices(text);
+        var all = await GetAllQuotedDevicesAsync(ffmpegExe);
         var res = new List<string>();
 
         foreach (var d in all)
             if (IsLikelyAudio(d)) res.Add(d);
 
         return res;
+    }
+
+    /// <summary>
+    /// Простая проверка работоспособности камеры.
+    /// НЕ перебирает форматы - просто проверяет, что камера отвечает.
+    /// </summary>
+    public static async Task<CameraCheckResult> CheckCameraSimpleAsync(string ffmpegExe, string cameraName)
+    {
+        try
+        {
+            // Просто пробуем открыть камеру на 1 секунду без записи
+            // Используем -t 1 для ограничения времени
+            var args = $"-hide_banner -f dshow -i video=\"{cameraName}\" -t 0.5 -f null -";
+
+            var psi = new ProcessStartInfo(ffmpegExe, args)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var p = Process.Start(psi);
+            if (p == null)
+                return new CameraCheckResult(false, "Не удалось запустить FFmpeg");
+
+            var stderrTask = p.StandardError.ReadToEndAsync();
+
+            // Ждём завершения (с таймаутом 5 секунд)
+            var completed = p.WaitForExit(5000);
+            if (!completed)
+            {
+                try { p.Kill(); } catch { }
+                return new CameraCheckResult(false, "Таймаут при проверке камеры");
+            }
+
+            var stderr = await stderrTask;
+
+            // Если есть "Error opening input" - камера не работает
+            if (stderr.Contains("Error opening input", StringComparison.OrdinalIgnoreCase) ||
+                stderr.Contains("Could not find video device", StringComparison.OrdinalIgnoreCase) ||
+                stderr.Contains("Access is denied", StringComparison.OrdinalIgnoreCase))
+            {
+                return new CameraCheckResult(false, ExtractShortError(stderr));
+            }
+
+            // Если exitCode=0 или есть признаки успешного открытия - камера работает
+            // FFmpeg может вернуть ненулевой код даже при успешном открытии (из-за -t 0.5)
+            if (stderr.Contains("Stream #0", StringComparison.OrdinalIgnoreCase) ||
+                stderr.Contains("Input #0", StringComparison.OrdinalIgnoreCase))
+            {
+                return new CameraCheckResult(true, "OK");
+            }
+
+            // Неопределённый результат - считаем что работает (проверим при реальной записи)
+            return new CameraCheckResult(true, "Предварительно OK");
+        }
+        catch (Exception ex)
+        {
+            return new CameraCheckResult(false, ex.Message);
+        }
+    }
+
+    private static string ExtractShortError(string stderr)
+    {
+        // Извлекаем первую строку с ошибкой
+        var lines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
+        {
+            if (line.Contains("Error", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("denied", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Could not", StringComparison.OrdinalIgnoreCase))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.Length > 100)
+                    trimmed = trimmed.Substring(0, 100) + "...";
+                return trimmed;
+            }
+        }
+
+        // Если конкретная ошибка не найдена - первые 100 символов
+        if (stderr.Length > 100)
+            return stderr.Substring(0, 100) + "...";
+        return stderr;
     }
 
     private static bool IsLikelyAudio(string name)
@@ -94,9 +229,9 @@ internal static class CameraDeviceProvider
                s.Contains("науш");
     }
 
-    private static async Task<string> GetDshowListingAsync(string ffmpegExe)
+    private static async Task<List<string>> GetAllQuotedDevicesAsync(string ffmpegExe)
     {
-        // Важно: list_devices обычно пишет в stderr, но берём и stdout тоже
+        // list_devices пишет в stderr
         var psi = new ProcessStartInfo(ffmpegExe, "-hide_banner -list_devices true -f dshow -i dummy")
         {
             RedirectStandardOutput = true,
@@ -106,7 +241,7 @@ internal static class CameraDeviceProvider
         };
 
         using var p = Process.Start(psi);
-        if (p == null) return string.Empty;
+        if (p == null) return new List<string>();
 
         var stdoutTask = p.StandardOutput.ReadToEndAsync();
         var stderrTask = p.StandardError.ReadToEndAsync();
@@ -118,95 +253,6 @@ internal static class CameraDeviceProvider
 
         var text = stdout + "\n" + stderr;
 
-        return text;
-    }
-
-    private static List<CameraDeviceInfo> ParseVideoDevices(string text)
-    {
-        var rx = new Regex("\"([^\"]+)\"", RegexOptions.Compiled);
-        var result = new List<CameraDeviceInfo>();
-        var inVideo = false;
-
-        foreach (var raw in text.Split('\n'))
-        {
-            var line = raw.Trim();
-            if (line.Contains("DirectShow video devices", StringComparison.OrdinalIgnoreCase))
-            {
-                inVideo = true;
-                continue;
-            }
-            if (line.Contains("DirectShow audio devices", StringComparison.OrdinalIgnoreCase))
-            {
-                inVideo = false;
-                continue;
-            }
-            if (!inVideo) continue;
-
-            if (line.Contains("Alternative name", StringComparison.OrdinalIgnoreCase))
-            {
-                var altMatch = rx.Match(line);
-                if (altMatch.Success && result.Count > 0)
-                {
-                    var altName = altMatch.Groups[1].Value.Trim();
-                    if (!string.IsNullOrWhiteSpace(altName))
-                    {
-                        var last = result[^1];
-                        if (string.IsNullOrWhiteSpace(last.AlternativeName))
-                            result[^1] = last with { AlternativeName = altName };
-                    }
-                }
-                continue;
-            }
-
-            var match = rx.Match(line);
-            if (!match.Success) continue;
-
-            var name = match.Groups[1].Value.Trim();
-            if (string.IsNullOrWhiteSpace(name)) continue;
-            result.Add(new CameraDeviceInfo(name, null));
-        }
-
-        return result;
-    }
-
-    private static List<string> ParseAudioDevices(string text)
-    {
-        var rx = new Regex("\"([^\"]+)\"", RegexOptions.Compiled);
-        var result = new List<string>();
-        var inAudio = false;
-
-        foreach (var raw in text.Split('\n'))
-        {
-            var line = raw.Trim();
-            if (line.Contains("DirectShow audio devices", StringComparison.OrdinalIgnoreCase))
-            {
-                inAudio = true;
-                continue;
-            }
-            if (line.Contains("DirectShow video devices", StringComparison.OrdinalIgnoreCase))
-            {
-                inAudio = false;
-                continue;
-            }
-            if (!inAudio) continue;
-
-            if (line.Contains("Alternative name", StringComparison.OrdinalIgnoreCase)) continue;
-
-            var match = rx.Match(line);
-            if (!match.Success) continue;
-
-            var name = match.Groups[1].Value.Trim();
-            if (string.IsNullOrWhiteSpace(name)) continue;
-
-            if (!result.Contains(name))
-                result.Add(name);
-        }
-
-        return result;
-    }
-
-    private static List<string> ParseAllQuotedDevices(string text)
-    {
         var rx = new Regex("\"([^\"]+)\"", RegexOptions.Compiled);
         var result = new List<string>();
 
@@ -229,3 +275,8 @@ internal static class CameraDeviceProvider
         return result;
     }
 }
+
+/// <summary>
+/// Результат проверки камеры.
+/// </summary>
+public readonly record struct CameraCheckResult(bool Success, string Message);
