@@ -10,6 +10,7 @@
         WindowStartupLocation="CenterOwner"
         FontFamily="Segoe UI"
         Loaded="Window_Loaded"
+        PreviewKeyDown="AnalysisWindow_PreviewKeyDown"
         Closing="Window_Closing"
         Closed="Window_Closed">
 

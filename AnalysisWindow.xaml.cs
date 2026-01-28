@@ -2919,6 +2919,17 @@ public partial class AnalysisWindow : Window
         }
     }
 
+    private void AnalysisWindow_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_isAoiMode) return;
+        if (e.Key != Key.Escape) return;
+        if (_currentDraftAoi == null) return;
+        if (_currentAoiType != AoiType.Polygon) return;
+
+        FinishAoiDrawing();
+        e.Handled = true;
+    }
+
 
     private void RemoveAoi(AoiElement aoi)
     {
