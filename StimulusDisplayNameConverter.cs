@@ -1,55 +1,28 @@
-// File: StimulusDisplayNameConverter.cs
 using System;
 using System.Globalization;
-using System.IO;
 using System.Windows.Data;
 
 namespace NeuroBureau.Experiment;
 
-public sealed class StimulusDisplayNameConverter : IValueConverter
+public sealed class MultiExportModeDisplayConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var s = value as string;
-        if (string.IsNullOrWhiteSpace(s))
-            return string.Empty;
-
-        s = s.Trim();
-
-        // Ожидаемый формат: "<uid> — <name>"
-        // Если разделителя нет — просто показываем то, что пришло.
-        var namePart = ExtractAfterDash(s);
-        if (string.IsNullOrWhiteSpace(namePart))
-            namePart = s;
-
-        // На всякий случай: если вдруг там путь — оставим только имя файла
-        try
+        if (value is MultiExportMode mode)
         {
-            var fileName = Path.GetFileName(namePart.Trim());
-            return string.IsNullOrWhiteSpace(fileName) ? namePart.Trim() : fileName;
+            return mode switch
+            {
+                MultiExportMode.SeparateFiles => "Отдельные файлы",
+                MultiExportMode.FilePerStimul => "Файл на стимул",
+                MultiExportMode.FilePerResult => "Файл на результат",
+                MultiExportMode.AllInOne => "Все в одном",
+                _ => mode.ToString()
+            };
         }
-        catch
-        {
-            return namePart.Trim();
-        }
+
+        return value?.ToString() ?? string.Empty;
     }
 
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-            => System.Windows.Data.Binding.DoNothing;
-
-
-    private static string ExtractAfterDash(string s)
-    {
-        // Основной кейс в UI — длинное тире.
-        var idx = s.IndexOf('—');
-        if (idx >= 0)
-            return s[(idx + 1)..].Trim();
-
-        // На всякий случай: короткое тире.
-        idx = s.IndexOf('–');
-        if (idx >= 0)
-            return s[(idx + 1)..].Trim();
-
-        return s;
-    }
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => System.Windows.Data.Binding.DoNothing;
 }

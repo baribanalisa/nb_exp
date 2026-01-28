@@ -340,21 +340,18 @@ public static MultiExportSettings LoadMultiExportSettings()
         if (Enum.TryParse<MultiExportMode>(modeStr, ignoreCase: true, out var parsedMode))
             s.Mode = parsedMode;
 
+        // Загружаем DataFormat
+        var formatStr = ReadString(me, "data-format", s.DataFormat.ToString());
+        if (Enum.TryParse<ExportDataFormat>(formatStr, ignoreCase: true, out var parsedFormat))
+            s.DataFormat = parsedFormat;
+
         s.ExportSource = ReadBool(me["export-source"], s.ExportSource);
         s.ExportRaw = ReadBool(me["export-raw"], s.ExportRaw);
         s.ExportActions = ReadBool(me["export-actions"], s.ExportActions);
         s.ExportAoi = ReadBool(me["export-aoi"], s.ExportAoi);
         s.ExportGazeImage = ReadBool(me["export-gaze-image"], s.ExportGazeImage);
         s.ExportHeatImage = ReadBool(me["export-heat-image"], s.ExportHeatImage);
-
-        // Загрузка форматов
-        var dataFormatStr = ReadString(me, "data-format", s.DataFormat.ToString());
-        if (Enum.TryParse<DataExportFormat>(dataFormatStr, ignoreCase: true, out var parsedDataFormat))
-            s.DataFormat = parsedDataFormat;
-
-        var imageFormatStr = ReadString(me, "image-format", s.ImageFormat.ToString());
-        if (Enum.TryParse<ImageExportFormat>(imageFormatStr, ignoreCase: true, out var parsedImageFormat))
-            s.ImageFormat = parsedImageFormat;
+        s.ExportEdf = ReadBool(me["export-edf"], s.ExportEdf);
 
         return s;
     }
@@ -387,6 +384,7 @@ public static void SaveMultiExportSettings(MultiExportSettings settings)
         ["output-dir"] = settings.OutputDir,
         ["filename-template"] = settings.FilenameTemplate,
         ["mode"] = settings.Mode.ToString(),
+        ["data-format"] = settings.DataFormat.ToString(),
 
         ["export-source"] = settings.ExportSource,
         ["export-raw"] = settings.ExportRaw,
@@ -394,13 +392,13 @@ public static void SaveMultiExportSettings(MultiExportSettings settings)
         ["export-aoi"] = settings.ExportAoi,
         ["export-gaze-image"] = settings.ExportGazeImage,
         ["export-heat-image"] = settings.ExportHeatImage,
-
-        ["data-format"] = settings.DataFormat.ToString(),
-        ["image-format"] = settings.ImageFormat.ToString(),
+        ["export-edf"] = settings.ExportEdf,
     };
 
     File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 }
+
+
 
 
     private static bool ReadBool(JsonNode? n, bool def = false)

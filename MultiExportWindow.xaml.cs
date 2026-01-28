@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using WinForms = System.Windows.Forms;
 
 namespace NeuroBureau.Experiment;
@@ -42,15 +43,31 @@ public partial class MultiExportWindow : Window
     private void SelectAllResults_Click(object sender, RoutedEventArgs e) => Vm.SetAllResultsSelected(true);
     private void ClearAllResults_Click(object sender, RoutedEventArgs e) => Vm.SetAllResultsSelected(false);
 
+    private void StimulusItem_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is MultiExportStimulusItem item)
+        {
+            item.IsSelected = !item.IsSelected;
+        }
+    }
+
+    private void ResultItem_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is MultiExportResultItem item)
+        {
+            item.IsSelected = !item.IsSelected;
+        }
+    }
+
     private async void Export_Click(object sender, RoutedEventArgs e)
     {
         try
         {
             Vm.ValidateTemplate();
 
-                        if (!Vm.CanStartExport)
+            if (!Vm.CanStartExport)
             {
-                System.Windows.MessageBox.Show(
+                MessageBox.Show(
                     "Проверь: выбраны стимулы/результаты, корректна папка и шаблон имени файла.",
                     "Мультиэкспорт",
                     MessageBoxButton.OK,
@@ -70,15 +87,23 @@ public partial class MultiExportWindow : Window
 
             var svc = new MultiExportService(Vm.ExpDir, Vm.Experiment!);
 
-            await svc.ExportAsync(opts, stimuli, results, msg => Vm.StatusText = msg);
+            await Task.Run(() =>
+            {
+                svc.Export(
+                    opts,
+                    stimuli,
+                    results,
+                    s => Dispatcher.BeginInvoke(() => Vm.StatusText = s),
+                    default);
+            });
 
-            Vm.StatusText = "Экспорт завершён";
-            System.Windows.MessageBox.Show("Экспорт завершён", "Мультиэкспорт", MessageBoxButton.OK, MessageBoxImage.Information);
+            Vm.StatusText = "Экспорт завершён!";
+            MessageBox.Show("Экспорт завершён!", "Мультиэкспорт", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            Vm.StatusText = "Экспорт: ошибка";
-            System.Windows.MessageBox.Show(ex.ToString(), "Мультиэкспорт: ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            Vm.StatusText = $"Ошибка: {ex.Message}";
+            MessageBox.Show($"Ошибка при экспорте:\n{ex.Message}", "Мультиэкспорт", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -86,4 +111,3 @@ public partial class MultiExportWindow : Window
         }
     }
 }
-

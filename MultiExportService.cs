@@ -5,11 +5,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
-using System.Threading.Tasks;
+using ClosedXML.Excel;
 
 namespace NeuroBureau.Experiment;
 
@@ -17,8 +16,8 @@ public sealed class MultiExportService
 {
     private readonly string _expDir;
     private readonly ExperimentFile _exp;
-
     private readonly string _resultsDir;
+
     private readonly string _trackerUid;
     private readonly string? _mouseKbdUid;
     private readonly string? _shimmerUid;
@@ -26,37 +25,26 @@ public sealed class MultiExportService
 
     private readonly FilenameTemplateResolver _resolver = new();
 
+    private const int TrackerRecordSize = 160; // TrackerData.Size
+    private const int MkRecordSize = 32;
+
     public MultiExportService(string expDir, ExperimentFile exp)
     {
         _expDir = expDir;
         _exp = exp;
+        _resultsDir = Path.Combine(expDir, "results");
 
-        _resultsDir = Path.Combine(_expDir, "results");
+        var devices = exp.Devices ?? new List<DeviceFile>();
 
-        _trackerUid =
-            exp.Devices.FirstOrDefault(d => IsEyeTrackerType(d.DevType))?.Uid
-            ?? throw new InvalidOperationException("В exp.json не найден ай-трекер (тип устройства PathFinder/Gazepoint/...).");
+        _trackerUid = devices.FirstOrDefault(d => (d.DevType ?? "").IndexOf("tracker", StringComparison.OrdinalIgnoreCase) >= 0)?.Uid
+                      ?? "tracker";
 
-        _mouseKbdUid =
-            exp.Devices.FirstOrDefault(d => string.Equals(d.DevType, "MouseKeyboard", StringComparison.OrdinalIgnoreCase))?.Uid;
-
-        _shimmerUid =
-            exp.Devices.FirstOrDefault(d => string.Equals(d.DevType, "ShimmerGSR", StringComparison.OrdinalIgnoreCase))?.Uid;
-
-        _hasEeg = exp.Devices.Any(d => (d.DevType ?? "").IndexOf("eeg", StringComparison.OrdinalIgnoreCase) >= 0);
+        _mouseKbdUid = devices.FirstOrDefault(d => (d.DevType ?? "").IndexOf("mouse", StringComparison.OrdinalIgnoreCase) >= 0)?.Uid;
+        _shimmerUid = devices.FirstOrDefault(d => (d.DevType ?? "").IndexOf("shimmer", StringComparison.OrdinalIgnoreCase) >= 0)?.Uid;
+        _hasEeg = devices.Any(d => (d.DevType ?? "").IndexOf("eeg", StringComparison.OrdinalIgnoreCase) >= 0);
     }
 
-    public Task ExportAsync(
-        MultiExportOptions options,
-        IReadOnlyList<StimulFile> stimuli,
-        IReadOnlyList<MultiExportResult> results,
-        Action<string>? progress = null,
-        CancellationToken ct = default)
-    {
-        return Task.Run(() => ExportSync(options, stimuli, results, progress, ct), ct);
-    }
-
-    private void ExportSync(
+    public void Export(
         MultiExportOptions options,
         IReadOnlyList<StimulFile> stimuli,
         IReadOnlyList<MultiExportResult> results,
@@ -73,20 +61,16 @@ public sealed class MultiExportService
 
         Directory.CreateDirectory(options.OutputDir);
 
-        // Валидация шаблона
         if (!_resolver.TryValidate(options.FilenameTemplate, _exp, out var err))
             throw new InvalidOperationException("Шаблон имени файла: " + err);
 
-        // Ограничения режимов (дублируем защиту VM)
         if (options.Mode == MultiExportMode.AllInOne && (options.ExportRaw || options.ExportSource))
             throw new InvalidOperationException("В режиме «Все в одном» запрещены сырые/исходные данные.");
 
-        if (options.Mode == MultiExportMode.AllInOne && (options.ExportGazeImage || options.ExportHeatImage))
-            throw new InvalidOperationException("В режиме «Все в одном» недоступен экспорт изображений.");
+        if (options.ExportEdf && (!_hasEeg || options.Mode != MultiExportMode.SeparateFiles))
+            throw new InvalidOperationException("EDF доступен только в режиме «Отдельные файлы» и только если в эксперименте есть ЭЭГ.");
 
         var now = DateTime.Now;
-
-        // Подготовим lookup по UID результатов
         var resultByUid = results.ToDictionary(r => r.Uid, r => r, StringComparer.OrdinalIgnoreCase);
 
         void Report(string s) => progress?.Invoke(s);
@@ -142,19 +126,22 @@ public sealed class MultiExportService
                     ExportSourceFiles(options, now, rr, st, report);
 
                 if (options.ExportRaw)
-                    ExportRawGazeCsv(options, now, rr, st);
+                    ExportRawGaze(options, now, rr, st);
 
                 if (options.ExportActions)
-                    ExportActionsCsv(options, now, rr, st);
+                    ExportActions(options, now, rr, st);
 
                 if (options.ExportAoi)
-                    ExportAoiJson(options, now, rr, st);
+                    ExportAoi(options, now, rr, st);
 
                 if (options.ExportGazeImage)
                     ExportPrebuiltImageIfExists(options, now, rr, st, "gaze", report);
 
                 if (options.ExportHeatImage)
                     ExportPrebuiltImageIfExists(options, now, rr, st, "heat", report);
+
+                if (options.ExportEdf)
+                    ExportEdfIfExists(options, now, rr, report);
             }
         }
     }
@@ -183,24 +170,15 @@ public sealed class MultiExportService
             }
 
             if (options.ExportRaw)
-                ExportRawGazeCsv_AggregatedPerStimul(options, now, results, st);
+                ExportRawGaze_AggregatedPerStimul(options, now, results, st);
 
             if (options.ExportActions)
-                ExportActionsCsv_AggregatedPerStimul(options, now, results, st);
+                ExportActions_AggregatedPerStimul(options, now, results, st);
 
             if (options.ExportAoi)
             {
-                // AOI на стимул один раз
-                ExportAoiJson(options, now, results[0], st);
+                ExportAoi(options, now, results[0], st);
             }
-
-            if (options.ExportGazeImage)
-                ExportPrebuiltImageForStimulus(options, now, results, st, "gaze", report);
-
-            if (options.ExportHeatImage)
-                ExportPrebuiltImageForStimulus(options, now, results, st, "heat", report);
-
-            // EDF по плану не пишем
         }
     }
 
@@ -228,13 +206,13 @@ public sealed class MultiExportService
             }
 
             if (options.ExportRaw)
-                ExportRawGazeCsv_AggregatedPerResult(options, now, rr, stimuli);
+                ExportRawGaze_AggregatedPerResult(options, now, rr, stimuli);
 
             if (options.ExportActions)
-                ExportActionsCsv_AggregatedPerResult(options, now, rr, stimuli);
+                ExportActions_AggregatedPerResult(options, now, rr, stimuli);
 
             if (options.ExportAoi)
-                ExportAoiJson_AggregatedPerResult(options, now, rr, stimuli);
+                ExportAoi_AggregatedPerResult(options, now, rr, stimuli);
         }
     }
 
@@ -247,240 +225,407 @@ public sealed class MultiExportService
         Action<string> report,
         CancellationToken ct)
     {
-        // По требованиям: Raw/Source запрещены, остаётся AOI и/или картинки (если есть)
         if (options.ExportAoi)
-            ExportAoiJson_AllInOne(options, now, results, stimuli);
+            ExportAoi_AllInOne(options, now, results, stimuli);
 
-        if (options.ExportActions)
-            ExportActionsCsv_AllInOne(options, now, results, stimuli);
+        if (options.ExportGazeImage || options.ExportHeatImage)
+        {
+            foreach (var st in stimuli)
+            {
+                foreach (var rr in results)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (options.ExportGazeImage)
+                        ExportPrebuiltImageIfExists(options, now, rr, st, "gaze", report);
+                    if (options.ExportHeatImage)
+                        ExportPrebuiltImageIfExists(options, now, rr, st, "heat", report);
+                }
+            }
+        }
     }
 
-    // ===== Source (копирование бинарников устройств) =====
+    // ===== Source =====
 
     private void ExportSourceFiles(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, Action<string> report)
     {
-        // tracker
-        CopyIfExists(
-            src: Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid),
-            type: "source_tracker",
-            ext: "bin");
+        CopyIfExists(Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid), "source_tracker", "bin");
 
-        // mouse/keyboard
         if (!string.IsNullOrWhiteSpace(_mouseKbdUid))
-        {
-            CopyIfExists(
-                src: Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!),
-                type: "source_actions",
-                ext: "bin");
-        }
+            CopyIfExists(Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!), "source_actions", "bin");
 
-        // shimmer gsr
         if (!string.IsNullOrWhiteSpace(_shimmerUid))
-        {
-            CopyIfExists(
-                src: Path.Combine(_resultsDir, rr.Uid, st.Uid, _shimmerUid!),
-                type: "source_gsr",
-                ext: "bin");
-        }
+            CopyIfExists(Path.Combine(_resultsDir, rr.Uid, st.Uid, _shimmerUid!), "source_gsr", "bin");
 
         void CopyIfExists(string src, string type, string ext)
         {
             if (!File.Exists(src)) return;
-
             var name = BuildFileName(options, now, rr, st, type, ext);
-            var dst = Path.Combine(options.OutputDir, name);
-            dst = EnsureUniquePath(dst);
-
+            var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
             Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
             File.Copy(src, dst, overwrite: true);
         }
     }
 
-    // ===== Raw gaze CSV =====
+    // ===== Raw Gaze =====
 
-    private void ExportRawGazeCsv(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
+    private void ExportRawGaze(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
     {
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, st, "raw_gaze", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
         var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
         if (!File.Exists(src)) return;
 
-        var name = BuildFileName(options, now, rr, st, "raw_gaze", "csv");
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+        var data = ReadTrackerData(src);
 
-        using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        using var sw = new StreamWriter(dst);
-
-        sw.WriteLine("time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
-
-        var buf = new byte[TrackerData.Size];
-        while (true)
-        {
-            int read = fs.Read(buf, 0, buf.Length);
-            if (read == 0) break;
-            if (read != buf.Length) break;
-
-            var r = MemoryMarshal.Read<TrackerData>(buf);
-
-            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.z.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.valid.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-            sw.Write(r.lx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.ly.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.rx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.ry.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-            sw.Write(r.lp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.rp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-            sw.Write(r.lopen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.ropen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-            sw.Write(r.leyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.leyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.leyez.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-            sw.Write(r.reyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.reyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.WriteLine(r.reyez.ToString(CultureInfo.InvariantCulture));
-        }
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteTrackerDataXlsx(dst, data, includeStimulColumn: false, includeResultColumn: false);
+        else
+            WriteTrackerDataCsv(dst, data, includeStimulColumn: false, includeResultColumn: false);
     }
 
-    private void ExportRawGazeCsv_AggregatedPerStimul(
-        MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
+    private void ExportRawGaze_AggregatedPerStimul(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
     {
-        var name = BuildFileName(options, now, results[0], st, "raw_gaze_per_stimul", "csv");
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, results[0], st, "raw_gaze_per_stimul", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        using var sw = new StreamWriter(dst);
-        sw.WriteLine("result_uid;time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
+        var allData = new List<(string resultUid, TrackerRecord r)>();
 
         foreach (var rr in results)
         {
             var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
             if (!File.Exists(src)) continue;
 
-            using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var buf = new byte[TrackerData.Size];
-
-            while (true)
-            {
-                int read = fs.Read(buf, 0, buf.Length);
-                if (read == 0) break;
-                if (read != buf.Length) break;
-
-                var r = MemoryMarshal.Read<TrackerData>(buf);
-
-                sw.Write(rr.Uid); sw.Write(';');
-                sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.z.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.valid.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.lx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.ly.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.rx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.ry.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.lp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.rp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.lopen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.ropen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.leyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.leyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.leyez.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.reyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.reyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.WriteLine(r.reyez.ToString(CultureInfo.InvariantCulture));
-            }
+            foreach (var r in ReadTrackerData(src))
+                allData.Add((rr.Uid, r));
         }
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteTrackerDataXlsx(dst, allData, includeResultColumn: true);
+        else
+            WriteTrackerDataCsv(dst, allData, includeResultColumn: true);
     }
 
-    private void ExportRawGazeCsv_AggregatedPerResult(
-        MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
+    private void ExportRawGaze_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
     {
-        var name = BuildFileName(options, now, rr, stimuli[0], "raw_gaze_per_result", "csv");
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, stimuli[0], "raw_gaze_per_result", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        using var sw = new StreamWriter(dst);
-        sw.WriteLine("stimul_uid;time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
+        var allData = new List<(string stimUid, TrackerRecord r)>();
 
         foreach (var st in stimuli)
         {
             var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
             if (!File.Exists(src)) continue;
 
-            using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var buf = new byte[TrackerData.Size];
-
-            while (true)
-            {
-                int read = fs.Read(buf, 0, buf.Length);
-                if (read == 0) break;
-                if (read != buf.Length) break;
-
-                var r = MemoryMarshal.Read<TrackerData>(buf);
-
-                sw.Write(st.Uid); sw.Write(';');
-                sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.z.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.valid.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.lx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.ly.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.rx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.ry.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.lp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.rp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.lopen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.ropen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.leyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.leyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.leyez.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-
-                sw.Write(r.reyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(r.reyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.WriteLine(r.reyez.ToString(CultureInfo.InvariantCulture));
-            }
+            foreach (var r in ReadTrackerData(src))
+                allData.Add((st.Uid, r));
         }
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteTrackerDataXlsx(dst, allData, includeStimulColumn: true);
+        else
+            WriteTrackerDataCsv(dst, allData, includeStimulColumn: true);
     }
 
-    // ===== Actions CSV (мышь/клава) =====
+    // ===== Actions =====
 
-    private const int MkRecordSize = 48;
-
-    private void ExportActionsCsv(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
+    private void ExportActions(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
     {
         if (string.IsNullOrWhiteSpace(_mouseKbdUid)) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, st, "actions", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
         var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
         if (!File.Exists(src)) return;
 
-        var name = BuildFileName(options, now, rr, st, "actions", "csv");
+        var data = ReadActionsData(src);
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteActionsDataXlsx(dst, data, includeStimulColumn: false, includeResultColumn: false);
+        else
+            WriteActionsDataCsv(dst, data, includeStimulColumn: false, includeResultColumn: false);
+    }
+
+    private void ExportActions_AggregatedPerStimul(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
+    {
+        if (string.IsNullOrWhiteSpace(_mouseKbdUid)) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, results[0], st, "actions_per_stimul", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        using var sw = new StreamWriter(dst);
+        var allData = new List<(string resultUid, ActionRecord r)>();
 
-        sw.WriteLine("time_sec;mouse_button;keyboard_code;x;y");
+        foreach (var rr in results)
+        {
+            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
+            if (!File.Exists(src)) continue;
 
+            foreach (var r in ReadActionsData(src))
+                allData.Add((rr.Uid, r));
+        }
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteActionsDataXlsx(dst, allData, includeResultColumn: true);
+        else
+            WriteActionsDataCsv(dst, allData, includeResultColumn: true);
+    }
+
+    private void ExportActions_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
+    {
+        if (string.IsNullOrWhiteSpace(_mouseKbdUid)) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, stimuli[0], "actions_per_result", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        var allData = new List<(string stimUid, ActionRecord r)>();
+
+        foreach (var st in stimuli)
+        {
+            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
+            if (!File.Exists(src)) continue;
+
+            foreach (var r in ReadActionsData(src))
+                allData.Add((st.Uid, r));
+        }
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteActionsDataXlsx(dst, allData, includeStimulColumn: true);
+        else
+            WriteActionsDataCsv(dst, allData, includeStimulColumn: true);
+    }
+
+    // ===== AOI (CSV/XLSX вместо JSON) =====
+
+    private void ExportAoi(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
+    {
+        var aoiPath = FindAoiJson(st.Uid, preferredResultUid: rr.Uid);
+        if (aoiPath == null) return;
+
+        var aoiList = LoadAoiElements(aoiPath);
+        if (aoiList == null || aoiList.Count == 0) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, st, "aoi", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteAoiDataXlsx(dst, aoiList, st.Uid);
+        else
+            WriteAoiDataCsv(dst, aoiList, st.Uid);
+    }
+
+    private void ExportAoi_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
+    {
+        var allAoi = new List<(string stimUid, List<AoiElement> aois)>();
+
+        foreach (var st in stimuli)
+        {
+            var aoiPath = FindAoiJson(st.Uid, preferredResultUid: rr.Uid);
+            if (aoiPath == null) continue;
+
+            var aoiList = LoadAoiElements(aoiPath);
+            if (aoiList != null && aoiList.Count > 0)
+                allAoi.Add((st.Uid, aoiList));
+        }
+
+        if (allAoi.Count == 0) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, stimuli[0], "aoi_per_result", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteAoiDataXlsx_Aggregated(dst, allAoi);
+        else
+            WriteAoiDataCsv_Aggregated(dst, allAoi);
+    }
+
+    private void ExportAoi_AllInOne(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, IReadOnlyList<StimulFile> stimuli)
+    {
+        var allAoi = new List<(string stimUid, List<AoiElement> aois)>();
+
+        foreach (var st in stimuli)
+        {
+            var aoiPath = FindAoiJson(st.Uid, preferredResultUid: results.Count > 0 ? results[0].Uid : null);
+            if (aoiPath == null) continue;
+
+            var aoiList = LoadAoiElements(aoiPath);
+            if (aoiList != null && aoiList.Count > 0)
+                allAoi.Add((st.Uid, aoiList));
+        }
+
+        if (allAoi.Count == 0) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, results[0], stimuli[0], "aoi_all", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteAoiDataXlsx_Aggregated(dst, allAoi);
+        else
+            WriteAoiDataCsv_Aggregated(dst, allAoi);
+    }
+
+    // ===== AOI Writing Methods =====
+
+    private void WriteAoiDataCsv(string path, List<AoiElement> aoiList, string stimUid)
+    {
+        using var sw = new StreamWriter(path);
+        sw.WriteLine("stimul_uid;aoi_uid;aoi_name;aoi_type;color;line_width;points");
+
+        foreach (var aoi in aoiList)
+        {
+            var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+            sw.Write(stimUid); sw.Write(';');
+            sw.Write(aoi.Uid); sw.Write(';');
+            sw.Write(EscapeCsv(aoi.Name)); sw.Write(';');
+            sw.Write(aoi.Type.ToString()); sw.Write(';');
+            sw.Write(aoi.ColorHex); sw.Write(';');
+            sw.Write(aoi.LineWidth.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.WriteLine(points);
+        }
+    }
+
+    private void WriteAoiDataCsv_Aggregated(string path, List<(string stimUid, List<AoiElement> aois)> allAoi)
+    {
+        using var sw = new StreamWriter(path);
+        sw.WriteLine("stimul_uid;aoi_uid;aoi_name;aoi_type;color;line_width;points");
+
+        foreach (var (stimUid, aoiList) in allAoi)
+        {
+            foreach (var aoi in aoiList)
+            {
+                var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+                sw.Write(stimUid); sw.Write(';');
+                sw.Write(aoi.Uid); sw.Write(';');
+                sw.Write(EscapeCsv(aoi.Name)); sw.Write(';');
+                sw.Write(aoi.Type.ToString()); sw.Write(';');
+                sw.Write(aoi.ColorHex); sw.Write(';');
+                sw.Write(aoi.LineWidth.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+                sw.WriteLine(points);
+            }
+        }
+    }
+
+    private void WriteAoiDataXlsx(string path, List<AoiElement> aoiList, string stimUid)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("AOI");
+
+        ws.Cell(1, 1).Value = "stimul_uid";
+        ws.Cell(1, 2).Value = "aoi_uid";
+        ws.Cell(1, 3).Value = "aoi_name";
+        ws.Cell(1, 4).Value = "aoi_type";
+        ws.Cell(1, 5).Value = "color";
+        ws.Cell(1, 6).Value = "line_width";
+        ws.Cell(1, 7).Value = "points";
+
+        int row = 2;
+        foreach (var aoi in aoiList)
+        {
+            var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+            ws.Cell(row, 1).Value = stimUid;
+            ws.Cell(row, 2).Value = aoi.Uid;
+            ws.Cell(row, 3).Value = aoi.Name;
+            ws.Cell(row, 4).Value = aoi.Type.ToString();
+            ws.Cell(row, 5).Value = aoi.ColorHex;
+            ws.Cell(row, 6).Value = aoi.LineWidth;
+            ws.Cell(row, 7).Value = points;
+            row++;
+        }
+
+        ws.Columns().AdjustToContents();
+        wb.SaveAs(path);
+    }
+
+    private void WriteAoiDataXlsx_Aggregated(string path, List<(string stimUid, List<AoiElement> aois)> allAoi)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("AOI");
+
+        ws.Cell(1, 1).Value = "stimul_uid";
+        ws.Cell(1, 2).Value = "aoi_uid";
+        ws.Cell(1, 3).Value = "aoi_name";
+        ws.Cell(1, 4).Value = "aoi_type";
+        ws.Cell(1, 5).Value = "color";
+        ws.Cell(1, 6).Value = "line_width";
+        ws.Cell(1, 7).Value = "points";
+
+        int row = 2;
+        foreach (var (stimUid, aoiList) in allAoi)
+        {
+            foreach (var aoi in aoiList)
+            {
+                var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
+                ws.Cell(row, 1).Value = stimUid;
+                ws.Cell(row, 2).Value = aoi.Uid;
+                ws.Cell(row, 3).Value = aoi.Name;
+                ws.Cell(row, 4).Value = aoi.Type.ToString();
+                ws.Cell(row, 5).Value = aoi.ColorHex;
+                ws.Cell(row, 6).Value = aoi.LineWidth;
+                ws.Cell(row, 7).Value = points;
+                row++;
+            }
+        }
+
+        ws.Columns().AdjustToContents();
+        wb.SaveAs(path);
+    }
+
+    private List<AoiElement>? LoadAoiElements(string path)
+    {
+        try
+        {
+            var json = File.ReadAllText(path);
+            return JsonSerializer.Deserialize<List<AoiElement>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // ===== Helper methods for tracker and actions data =====
+
+    private record TrackerRecord(double time, double x, double y, double z, int valid, double lx, double ly, double rx, double ry, double lp, double rp, int lopen, int ropen, double leyex, double leyey, double leyez, double reyex, double reyey, double reyez);
+    private record ActionRecord(double time, uint mouse, uint key, double x, double y);
+
+    private List<TrackerRecord> ReadTrackerData(string path)
+    {
+        var result = new List<TrackerRecord>();
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var buf = new byte[TrackerData.Size];
+
+        while (true)
+        {
+            int read = fs.Read(buf, 0, buf.Length);
+            if (read == 0 || read != buf.Length) break;
+
+            var r = TrackerData.FromBytes(buf);
+            result.Add(new TrackerRecord(r.time, r.x, r.y, r.z, r.valid, r.lx, r.ly, r.rx, r.ry, r.lp, r.rp, r.lopen, r.ropen, r.leyex, r.leyey, r.leyez, r.reyex, r.reyey, r.reyez));
+        }
+
+        return result;
+    }
+
+    private List<ActionRecord> ReadActionsData(string path)
+    {
+        var result = new List<ActionRecord>();
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         Span<byte> buf = stackalloc byte[MkRecordSize];
 
         while (true)
         {
             int n = fs.Read(buf);
-            if (n == 0) break;
-            if (n != MkRecordSize) break;
+            if (n == 0 || n != MkRecordSize) break;
 
             double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
             uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
@@ -488,368 +633,351 @@ public sealed class MultiExportService
             double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
             double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
 
-            sw.Write(time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.WriteLine(y.ToString(CultureInfo.InvariantCulture));
+            result.Add(new ActionRecord(time, mouse, key, x, y));
+        }
+
+        return result;
+    }
+
+    private void WriteTrackerDataCsv(string path, IEnumerable<TrackerRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    {
+        using var sw = new StreamWriter(path);
+        sw.WriteLine("time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
+
+        foreach (var r in data)
+        {
+            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.z.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.valid.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.lx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.ly.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.rx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.ry.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.lp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.rp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.lopen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.ropen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.leyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.leyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.leyez.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.reyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.reyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.WriteLine(r.reyez.ToString(CultureInfo.InvariantCulture));
         }
     }
 
-    private void ExportActionsCsv_AggregatedPerStimul(
-        MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
+    private void WriteTrackerDataCsv(string path, IEnumerable<(string uid, TrackerRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
     {
-        if (string.IsNullOrWhiteSpace(_mouseKbdUid)) return;
+        using var sw = new StreamWriter(path);
+        var header = includeResultColumn ? "result_uid;" : (includeStimulColumn ? "stimul_uid;" : "");
+        sw.WriteLine(header + "time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
 
-        var name = BuildFileName(options, now, results[0], st, "actions_per_stimul", "csv");
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-        using var sw = new StreamWriter(dst);
-        sw.WriteLine("result_uid;time_sec;mouse_button;keyboard_code;x;y");
-
-        Span<byte> buf = stackalloc byte[MkRecordSize];
-
-        foreach (var rr in results)
+        foreach (var (uid, r) in data)
         {
-            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
-            if (!File.Exists(src)) continue;
-
-            using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-            while (true)
+            if (includeResultColumn || includeStimulColumn)
             {
-                int n = fs.Read(buf);
-                if (n == 0) break;
-                if (n != MkRecordSize) break;
-
-                double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
-                uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
-                uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
-                double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
-                double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
-
-                sw.Write(rr.Uid); sw.Write(';');
-                sw.Write(time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.WriteLine(y.ToString(CultureInfo.InvariantCulture));
+                sw.Write(uid); sw.Write(';');
             }
+            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.z.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.valid.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.lx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.ly.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.rx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.ry.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.lp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.rp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.lopen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.ropen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.leyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.leyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.leyez.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.reyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.reyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.WriteLine(r.reyez.ToString(CultureInfo.InvariantCulture));
         }
     }
 
-    private void ExportActionsCsv_AggregatedPerResult(
-        MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
+    private void WriteTrackerDataXlsx(string path, IEnumerable<TrackerRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
     {
-        if (string.IsNullOrWhiteSpace(_mouseKbdUid)) return;
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("RawGaze");
 
-        var name = BuildFileName(options, now, rr, stimuli[0], "actions_per_result", "csv");
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+        var headers = new[] { "time_sec", "x", "y", "z", "valid", "lx", "ly", "rx", "ry", "lp", "rp", "lopen", "ropen", "leyex", "leyey", "leyez", "reyex", "reyey", "reyez" };
+        for (int i = 0; i < headers.Length; i++)
+            ws.Cell(1, i + 1).Value = headers[i];
 
-        using var sw = new StreamWriter(dst);
-        sw.WriteLine("stimul_uid;time_sec;mouse_button;keyboard_code;x;y");
-
-        Span<byte> buf = stackalloc byte[MkRecordSize];
-
-        foreach (var st in stimuli)
+        int row = 2;
+        foreach (var r in data)
         {
-            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
-            if (!File.Exists(src)) continue;
+            ws.Cell(row, 1).Value = r.time;
+            ws.Cell(row, 2).Value = r.x;
+            ws.Cell(row, 3).Value = r.y;
+            ws.Cell(row, 4).Value = r.z;
+            ws.Cell(row, 5).Value = r.valid;
+            ws.Cell(row, 6).Value = r.lx;
+            ws.Cell(row, 7).Value = r.ly;
+            ws.Cell(row, 8).Value = r.rx;
+            ws.Cell(row, 9).Value = r.ry;
+            ws.Cell(row, 10).Value = r.lp;
+            ws.Cell(row, 11).Value = r.rp;
+            ws.Cell(row, 12).Value = r.lopen;
+            ws.Cell(row, 13).Value = r.ropen;
+            ws.Cell(row, 14).Value = r.leyex;
+            ws.Cell(row, 15).Value = r.leyey;
+            ws.Cell(row, 16).Value = r.leyez;
+            ws.Cell(row, 17).Value = r.reyex;
+            ws.Cell(row, 18).Value = r.reyey;
+            ws.Cell(row, 19).Value = r.reyez;
+            row++;
+        }
 
-            using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        ws.Columns().AdjustToContents();
+        wb.SaveAs(path);
+    }
 
-            while (true)
-            {
-                int n = fs.Read(buf);
-                if (n == 0) break;
-                if (n != MkRecordSize) break;
+    private void WriteTrackerDataXlsx(string path, IEnumerable<(string uid, TrackerRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("RawGaze");
 
-                double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
-                uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
-                uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
-                double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
-                double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
+        int col = 1;
+        if (includeResultColumn)
+            ws.Cell(1, col++).Value = "result_uid";
+        else if (includeStimulColumn)
+            ws.Cell(1, col++).Value = "stimul_uid";
 
-                sw.Write(st.Uid); sw.Write(';');
-                sw.Write(time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.Write(x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.WriteLine(y.ToString(CultureInfo.InvariantCulture));
-            }
+        var headers = new[] { "time_sec", "x", "y", "z", "valid", "lx", "ly", "rx", "ry", "lp", "rp", "lopen", "ropen", "leyex", "leyey", "leyez", "reyex", "reyey", "reyez" };
+        foreach (var h in headers)
+            ws.Cell(1, col++).Value = h;
+
+        int row = 2;
+        foreach (var (uid, r) in data)
+        {
+            col = 1;
+            if (includeResultColumn || includeStimulColumn)
+                ws.Cell(row, col++).Value = uid;
+
+            ws.Cell(row, col++).Value = r.time;
+            ws.Cell(row, col++).Value = r.x;
+            ws.Cell(row, col++).Value = r.y;
+            ws.Cell(row, col++).Value = r.z;
+            ws.Cell(row, col++).Value = r.valid;
+            ws.Cell(row, col++).Value = r.lx;
+            ws.Cell(row, col++).Value = r.ly;
+            ws.Cell(row, col++).Value = r.rx;
+            ws.Cell(row, col++).Value = r.ry;
+            ws.Cell(row, col++).Value = r.lp;
+            ws.Cell(row, col++).Value = r.rp;
+            ws.Cell(row, col++).Value = r.lopen;
+            ws.Cell(row, col++).Value = r.ropen;
+            ws.Cell(row, col++).Value = r.leyex;
+            ws.Cell(row, col++).Value = r.leyey;
+            ws.Cell(row, col++).Value = r.leyez;
+            ws.Cell(row, col++).Value = r.reyex;
+            ws.Cell(row, col++).Value = r.reyey;
+            ws.Cell(row, col++).Value = r.reyez;
+            row++;
+        }
+
+        ws.Columns().AdjustToContents();
+        wb.SaveAs(path);
+    }
+
+    private void WriteActionsDataCsv(string path, IEnumerable<ActionRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    {
+        using var sw = new StreamWriter(path);
+        sw.WriteLine("time_sec;mouse_button;keyboard_code;x;y");
+
+        foreach (var r in data)
+        {
+            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
         }
     }
 
-    private void ExportActionsCsv_AllInOne(
-        MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, IReadOnlyList<StimulFile> stimuli)
+    private void WriteActionsDataCsv(string path, IEnumerable<(string uid, ActionRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
     {
-        if (string.IsNullOrWhiteSpace(_mouseKbdUid)) return;
+        using var sw = new StreamWriter(path);
+        var header = includeResultColumn ? "result_uid;" : (includeStimulColumn ? "stimul_uid;" : "");
+        sw.WriteLine(header + "time_sec;mouse_button;keyboard_code;x;y");
 
-        var name = BuildFileName(options, now, results[0], stimuli[0], "actions_all", "csv");
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-        using var sw = new StreamWriter(dst);
-        sw.WriteLine("result_uid;stimul_uid;time_sec;mouse_button;keyboard_code;x;y");
-
-        Span<byte> buf = stackalloc byte[MkRecordSize];
-
-        foreach (var rr in results)
+        foreach (var (uid, r) in data)
         {
-            foreach (var st in stimuli)
+            if (includeResultColumn || includeStimulColumn)
             {
-                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
-                if (!File.Exists(src)) continue;
-
-                using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-
-                while (true)
-                {
-                    int n = fs.Read(buf);
-                    if (n == 0) break;
-                    if (n != MkRecordSize) break;
-
-                    double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
-                    uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
-                    uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
-                    double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
-                    double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
-
-                    sw.Write(rr.Uid); sw.Write(';');
-                    sw.Write(st.Uid); sw.Write(';');
-                    sw.Write(time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                    sw.Write(mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                    sw.Write(key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                    sw.Write(x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                    sw.WriteLine(y.ToString(CultureInfo.InvariantCulture));
-                }
+                sw.Write(uid); sw.Write(';');
             }
+            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
         }
     }
 
-    // ===== AOI (json) =====
-
-    private void ExportAoiJson(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
+    private void WriteActionsDataXlsx(string path, IEnumerable<ActionRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
     {
-        var aoiPath = FindAoiJson(st.Uid, preferredResultUid: rr.Uid);
-        if (aoiPath == null) return;
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Actions");
 
-        var name = BuildFileName(options, now, rr, st, "aoi", "json");
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+        ws.Cell(1, 1).Value = "time_sec";
+        ws.Cell(1, 2).Value = "mouse_button";
+        ws.Cell(1, 3).Value = "keyboard_code";
+        ws.Cell(1, 4).Value = "x";
+        ws.Cell(1, 5).Value = "y";
 
-        File.Copy(aoiPath, dst, overwrite: true);
-    }
-
-    private void ExportAoiJson_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
-    {
-        var root = new JsonObject();
-
-        foreach (var st in stimuli)
+        int row = 2;
+        foreach (var r in data)
         {
-            var aoiPath = FindAoiJson(st.Uid, preferredResultUid: rr.Uid);
-            if (aoiPath == null) continue;
-
-            try
-            {
-                var node = JsonNode.Parse(File.ReadAllText(aoiPath));
-                if (node != null)
-                    root[st.Uid] = node;
-            }
-            catch
-            {
-                // пропускаем повреждённые AOI
-            }
+            ws.Cell(row, 1).Value = r.time;
+            ws.Cell(row, 2).Value = r.mouse;
+            ws.Cell(row, 3).Value = r.key;
+            ws.Cell(row, 4).Value = r.x;
+            ws.Cell(row, 5).Value = r.y;
+            row++;
         }
 
-        var name = BuildFileName(options, now, rr, stimuli[0], "aoi_per_result", "json");
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-        File.WriteAllText(dst, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        ws.Columns().AdjustToContents();
+        wb.SaveAs(path);
     }
 
-    private void ExportAoiJson_AllInOne(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, IReadOnlyList<StimulFile> stimuli)
+    private void WriteActionsDataXlsx(string path, IEnumerable<(string uid, ActionRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
     {
-        // общий файл: по стимулу AOI (берём из первого попавшегося результата)
-        var root = new JsonObject();
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add("Actions");
 
-        foreach (var st in stimuli)
+        int col = 1;
+        if (includeResultColumn)
+            ws.Cell(1, col++).Value = "result_uid";
+        else if (includeStimulColumn)
+            ws.Cell(1, col++).Value = "stimul_uid";
+
+        ws.Cell(1, col++).Value = "time_sec";
+        ws.Cell(1, col++).Value = "mouse_button";
+        ws.Cell(1, col++).Value = "keyboard_code";
+        ws.Cell(1, col++).Value = "x";
+        ws.Cell(1, col++).Value = "y";
+
+        int row = 2;
+        foreach (var (uid, r) in data)
         {
-            string? aoiPath = null;
-            foreach (var rr in results)
-            {
-                aoiPath = FindAoiJson(st.Uid, preferredResultUid: rr.Uid);
-                if (aoiPath != null) break;
-            }
+            col = 1;
+            if (includeResultColumn || includeStimulColumn)
+                ws.Cell(row, col++).Value = uid;
 
-            if (aoiPath == null) continue;
-
-            try
-            {
-                var node = JsonNode.Parse(File.ReadAllText(aoiPath));
-                if (node != null)
-                    root[st.Uid] = node;
-            }
-            catch { }
+            ws.Cell(row, col++).Value = r.time;
+            ws.Cell(row, col++).Value = r.mouse;
+            ws.Cell(row, col++).Value = r.key;
+            ws.Cell(row, col++).Value = r.x;
+            ws.Cell(row, col++).Value = r.y;
+            row++;
         }
 
-        // используем первый результат/стим только как контекст имени
-        var name = BuildFileName(options, now, results[0], stimuli[0], "aoi_all", "json");
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-        File.WriteAllText(dst, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        ws.Columns().AdjustToContents();
+        wb.SaveAs(path);
     }
 
-    private string? FindAoiJson(string stimulUid, string preferredResultUid)
+    // ===== Images =====
+
+    private void ExportPrebuiltImageIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, string type, Action<string> report)
     {
-        // 1) сначала в предпочитаемом результате
-        var p1 = Path.Combine(_resultsDir, preferredResultUid, stimulUid, "aoi.json");
-        if (File.Exists(p1)) return p1;
+        var imagePath = FindPrebuiltImage(rr.Uid, st.Uid, type);
+        if (imagePath == null) return;
 
-        // 2) иначе ищем по всем результатам
-        if (!Directory.Exists(_resultsDir)) return null;
+        var ext = Path.GetExtension(imagePath).TrimStart('.');
+        var name = BuildFileName(options, now, rr, st, type, ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        foreach (var dir in Directory.EnumerateDirectories(_resultsDir))
+        File.Copy(imagePath, dst, overwrite: true);
+    }
+
+    private string? FindPrebuiltImage(string resultUid, string stimUid, string type)
+    {
+        var patterns = new[]
         {
-            var p = Path.Combine(dir, stimulUid, "aoi.json");
-            if (File.Exists(p)) return p;
+            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}.png"),
+            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}.jpg"),
+            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}_image.png"),
+            Path.Combine(_resultsDir, resultUid, stimUid, $"{type}_image.jpg"),
+        };
+
+        return patterns.FirstOrDefault(File.Exists);
+    }
+
+    private void ExportEdfIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, Action<string> report)
+    {
+        var edfPath = Path.Combine(_resultsDir, rr.Uid, "eeg.edf");
+        if (!File.Exists(edfPath)) return;
+
+        var name = BuildFileName(options, now, rr, null!, "eeg", "edf");
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        File.Copy(edfPath, dst, overwrite: true);
+    }
+
+    // ===== Helpers =====
+
+    private string? FindAoiJson(string stimUid, string? preferredResultUid)
+    {
+        // Сначала ищем в папке результата
+        if (!string.IsNullOrWhiteSpace(preferredResultUid))
+        {
+            var path = Path.Combine(_resultsDir, preferredResultUid, stimUid, "aoi.json");
+            if (File.Exists(path)) return path;
+        }
+
+        // Потом в общей папке стимулов
+        var stimPath = Path.Combine(_expDir, "stimuli", stimUid, "aoi.json");
+        if (File.Exists(stimPath)) return stimPath;
+
+        // Ищем в любом результате
+        if (Directory.Exists(_resultsDir))
+        {
+            foreach (var rdir in Directory.EnumerateDirectories(_resultsDir))
+            {
+                var path = Path.Combine(rdir, stimUid, "aoi.json");
+                if (File.Exists(path)) return path;
+            }
         }
 
         return null;
     }
 
-    // ===== «картинки» (пока только копируем, если они уже где-то есть) =====
-
-    private void ExportPrebuiltImageIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, string kind, Action<string> report)
+    private string BuildFileName(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile? st, string type, string ext)
     {
-        // Ищем файлы вида gaze.png / heat.png в папке стимулов результата (если кто-то заранее генерил).
-        var dir = Path.Combine(_resultsDir, rr.Uid, st.Uid);
-        if (!Directory.Exists(dir)) return;
-
-        var candidates = new[]
-        {
-            Path.Combine(dir, $"{kind}.png"),
-            Path.Combine(dir, $"{kind}.jpg"),
-            Path.Combine(dir, $"{kind}.jpeg"),
-        };
-
-        var src = candidates.FirstOrDefault(File.Exists);
-        if (src == null) return;
-
-        var ext = Path.GetExtension(src).TrimStart('.');
-        var name = BuildFileName(options, now, rr, st, kind + "_image", ext);
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-        File.Copy(src, dst, overwrite: true);
-        report($"Изображение скопировано: {Path.GetFileName(dst)}");
-    }
-
-    private void ExportPrebuiltImageForStimulus(
-        MultiExportOptions options,
-        DateTime now,
-        IReadOnlyList<MultiExportResult> results,
-        StimulFile st,
-        string kind,
-        Action<string> report)
-    {
-        foreach (var rr in results)
-        {
-            // reuse pair-based lookup, но копируем только один раз для стимула
-            var dir = Path.Combine(_resultsDir, rr.Uid, st.Uid);
-            if (!Directory.Exists(dir)) continue;
-
-            var candidates = new[]
-            {
-                Path.Combine(dir, $"{kind}.png"),
-                Path.Combine(dir, $"{kind}.jpg"),
-                Path.Combine(dir, $"{kind}.jpeg"),
-            };
-
-            var src = candidates.FirstOrDefault(File.Exists);
-            if (src == null) continue;
-
-            var ext = Path.GetExtension(src).TrimStart('.');
-            var name = BuildFileName(options, now, rr, st, kind + "_image", ext);
-            var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-            File.Copy(src, dst, overwrite: true);
-            report($"Изображение скопировано: {Path.GetFileName(dst)}");
-            return;
-        }
-    }
-
-    // ===== EDF (пока только копируем, если уже есть) =====
-
-    private void ExportEdfIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, Action<string> report)
-    {
-        // Ищем любые *.edf внутри results/<uid>/ (мягко).
-        var dir = Path.Combine(_resultsDir, rr.Uid);
-        if (!Directory.Exists(dir)) return;
-
-        var edfs = Directory.EnumerateFiles(dir, "*.edf", SearchOption.AllDirectories).ToList();
-        if (edfs.Count == 0) return;
-
-        foreach (var src in edfs)
-        {
-            var rel = Path.GetRelativePath(dir, src);
-            var safeRel = rel.Replace(Path.DirectorySeparatorChar, '_').Replace(Path.AltDirectorySeparatorChar, '_');
-
-            // контекст стимула тут не обязателен — берём первый
-            var stDummy = _exp.Stimuls.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Uid)) ?? new StimulFile { Uid = "stim", Filename = "stim" };
-
-            var name = BuildFileName(options, now, rr, stDummy, "edf_" + safeRel, "edf");
-            var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-            File.Copy(src, dst, overwrite: true);
-        }
-
-        report($"EDF скопировано: {edfs.Count} файл(ов) для результата {rr.Uid}");
-    }
-
-    // ===== helpers =====
-
-    private string BuildFileName(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, string type, string extNoDot)
-    {
-        // Подсунем UID результата как «характеристику» __id_result
-        // (чтобы FilenameTemplateResolver мог подставить %id_result% без изменений ResultFile)
-        var rf = rr.File;
-        rf.CharsData ??= new List<CharValue>();
-
-        // временно добавим виртуальную пару
-        var injected = new CharValue { Name = "__id_result", Val = rr.Uid };
-        rf.CharsData.Add(injected);
-
-        try
-        {
-            return _resolver.Resolve(options.FilenameTemplate, now, _exp, rf, st, type, extNoDot);
-        }
-        finally
-        {
-            // убираем (не оставляем мусор в модели)
-            rf.CharsData.Remove(injected);
-        }
+        return _resolver.Resolve(options.FilenameTemplate, _exp, now, rr.Uid, rr.Result, st?.Uid ?? "", type, ext);
     }
 
     private static string EnsureUniquePath(string path)
     {
         if (!File.Exists(path)) return path;
 
-        var dir = Path.GetDirectoryName(path)!;
+        var dir = Path.GetDirectoryName(path) ?? "";
         var name = Path.GetFileNameWithoutExtension(path);
         var ext = Path.GetExtension(path);
 
-        for (int i = 2; i < 10_000; i++)
+        int i = 1;
+        while (true)
         {
-            var p = Path.Combine(dir, $"{name}_{i}{ext}");
-            if (!File.Exists(p)) return p;
+            var newPath = Path.Combine(dir, $"{name}_{i}{ext}");
+            if (!File.Exists(newPath)) return newPath;
+            i++;
         }
-
-        return path; // fallback
     }
 
-    private static bool IsEyeTrackerType(string? t)
+    private static string EscapeCsv(string value)
     {
-        if (string.IsNullOrWhiteSpace(t)) return false;
-        return t.Equals("PathFinder", StringComparison.OrdinalIgnoreCase)
-               || t.Equals("Gazepoint", StringComparison.OrdinalIgnoreCase)
-               || t.Contains("tracker", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(value)) return "";
+        if (value.Contains(';') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
     }
 }

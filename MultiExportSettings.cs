@@ -4,16 +4,13 @@ using System.IO;
 
 namespace NeuroBureau.Experiment;
 
-public enum DataExportFormat
+/// <summary>
+/// Формат данных для экспорта
+/// </summary>
+public enum ExportDataFormat
 {
     CSV,
     XLSX
-}
-
-public enum ImageExportFormat
-{
-    PNG,
-    JPG
 }
 
 public sealed class MultiExportSettings
@@ -25,6 +22,11 @@ public sealed class MultiExportSettings
 
     public MultiExportMode Mode { get; set; } = MultiExportMode.SeparateFiles;
 
+    /// <summary>
+    /// Формат данных для экспорта (CSV или XLSX)
+    /// </summary>
+    public ExportDataFormat DataFormat { get; set; } = ExportDataFormat.CSV;
+
     public bool ExportSource { get; set; } = true;
     public bool ExportRaw { get; set; } = true;
     public bool ExportActions { get; set; } = true;
@@ -34,7 +36,5 @@ public sealed class MultiExportSettings
     public bool ExportGazeImage { get; set; } = false;
     public bool ExportHeatImage { get; set; } = false;
 
-    // Форматы экспорта
-    public DataExportFormat DataFormat { get; set; } = DataExportFormat.CSV;
-    public ImageExportFormat ImageFormat { get; set; } = ImageExportFormat.PNG;
+    public bool ExportEdf { get; set; } = false;
 }

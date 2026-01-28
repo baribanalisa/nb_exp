@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -27,8 +28,7 @@ public sealed class MultiExportViewModel : ObservableObject
     public ObservableCollection<MultiExportResultItem> Results { get; } = new();
 
     public Array Modes { get; } = Enum.GetValues(typeof(MultiExportMode));
-    public Array DataFormats { get; } = Enum.GetValues(typeof(DataExportFormat));
-    public Array ImageFormats { get; } = Enum.GetValues(typeof(ImageExportFormat));
+    public Array DataFormats { get; } = Enum.GetValues(typeof(ExportDataFormat));
 
     private string _outputDir = "";
     public string OutputDir
@@ -76,7 +76,7 @@ public sealed class MultiExportViewModel : ObservableObject
         private set => SetProperty(ref _templateStatusText, value);
     }
 
-    public string TemplateStatusEmoji => TemplateIsValid ? "✅" : "❌";
+    public string TemplateStatusEmoji => TemplateIsValid ? "✓" : "✕";
 
     private MultiExportMode _mode = MultiExportMode.SeparateFiles;
     public MultiExportMode Mode
@@ -87,113 +87,112 @@ public sealed class MultiExportViewModel : ObservableObject
             if (SetProperty(ref _mode, value))
             {
                 ApplyConstraints();
-                OnPropertyChanged(nameof(CanExportImages));
                 OnPropertyChanged(nameof(CanExportRawOrSource));
+                OnPropertyChanged(nameof(CanExportImages));
+                OnPropertyChanged(nameof(CanExportEdf));
                 OnPropertyChanged(nameof(CanStartExport));
             }
         }
     }
 
-    private DataExportFormat _dataFormat = DataExportFormat.CSV;
-    public DataExportFormat DataFormat
+    private ExportDataFormat _dataFormat = ExportDataFormat.CSV;
+    /// <summary>
+    /// Формат данных для экспорта (CSV или XLSX)
+    /// </summary>
+    public ExportDataFormat DataFormat
     {
         get => _dataFormat;
         set => SetProperty(ref _dataFormat, value);
     }
 
-    private ImageExportFormat _imageFormat = ImageExportFormat.PNG;
-    public ImageExportFormat ImageFormat
-    {
-        get => _imageFormat;
-        set => SetProperty(ref _imageFormat, value);
-    }
-
+    // Checkbox bindings
     private bool _exportSource = true;
-    public bool ExportSource { get => _exportSource; set { if (SetProperty(ref _exportSource, value)) OnPropertyChanged(nameof(CanStartExport)); } }
+    public bool ExportSource { get => _exportSource; set => SetProperty(ref _exportSource, value); }
 
     private bool _exportRaw = true;
-    public bool ExportRaw { get => _exportRaw; set { if (SetProperty(ref _exportRaw, value)) OnPropertyChanged(nameof(CanStartExport)); } }
+    public bool ExportRaw { get => _exportRaw; set => SetProperty(ref _exportRaw, value); }
 
     private bool _exportActions = true;
-    public bool ExportActions { get => _exportActions; set { if (SetProperty(ref _exportActions, value)) OnPropertyChanged(nameof(CanStartExport)); } }
+    public bool ExportActions { get => _exportActions; set => SetProperty(ref _exportActions, value); }
 
     private bool _exportAoi = true;
-    public bool ExportAoi { get => _exportAoi; set { if (SetProperty(ref _exportAoi, value)) OnPropertyChanged(nameof(CanStartExport)); } }
+    public bool ExportAoi { get => _exportAoi; set => SetProperty(ref _exportAoi, value); }
 
     private bool _exportGazeImage;
-    public bool ExportGazeImage { get => _exportGazeImage; set { if (SetProperty(ref _exportGazeImage, value)) OnPropertyChanged(nameof(CanStartExport)); } }
+    public bool ExportGazeImage { get => _exportGazeImage; set => SetProperty(ref _exportGazeImage, value); }
 
     private bool _exportHeatImage;
-    public bool ExportHeatImage { get => _exportHeatImage; set { if (SetProperty(ref _exportHeatImage, value)) OnPropertyChanged(nameof(CanStartExport)); } }
+    public bool ExportHeatImage { get => _exportHeatImage; set => SetProperty(ref _exportHeatImage, value); }
 
-    public bool CanExportImages => Mode is MultiExportMode.SeparateFiles or MultiExportMode.FilePerStimul;
-    public bool CanExportRawOrSource => Mode != MultiExportMode.AllInOne;
+    private bool _exportEdf;
+    public bool ExportEdf { get => _exportEdf; set => SetProperty(ref _exportEdf, value); }
 
+    // Statuses
     private bool _isBusy;
-    public bool IsBusy
+    public bool IsBusy { get => _isBusy; set => SetProperty(ref _isBusy, value); }
+
+    private string _statusText = "Загрузка…";
+    public string StatusText { get => _statusText; set => SetProperty(ref _statusText, value); }
+
+    // Constraints
+    public bool CanExportRawOrSource => Mode != MultiExportMode.AllInOne;
+    public bool CanExportImages => Mode == MultiExportMode.SeparateFiles || Mode == MultiExportMode.FilePerStimul;
+    public bool CanExportEdf => HasEeg && Mode == MultiExportMode.SeparateFiles;
+
+    private bool _hasEeg;
+    public bool HasEeg
     {
-        get => _isBusy;
-        set
+        get => _hasEeg;
+        private set
         {
-            if (SetProperty(ref _isBusy, value))
-                OnPropertyChanged(nameof(CanStartExport));
+            if (SetProperty(ref _hasEeg, value))
+                OnPropertyChanged(nameof(CanExportEdf));
         }
     }
 
-    private string _statusText = "";
-    public string StatusText { get => _statusText; set => SetProperty(ref _statusText, value); }
-
     public bool CanStartExport =>
-        !IsBusy
-        && TemplateIsValid
-        && !string.IsNullOrWhiteSpace(OutputDir)
-        && Directory.Exists(OutputDir)
-        && Stimuli.Any(s => s.IsSelected)
-        && Results.Any(r => r.IsSelected)
-        && (ExportAoi || ExportActions || ExportRaw || ExportSource || ExportGazeImage || ExportHeatImage);
+        !IsBusy &&
+        Stimuli.Any(s => s.IsSelected) &&
+        Results.Any(r => r.IsSelected) &&
+        TemplateIsValid &&
+        !string.IsNullOrWhiteSpace(OutputDir);
 
     public MultiExportViewModel(string expDir, IReadOnlyCollection<string> initialSelectedResultUids)
     {
         ExpDir = expDir;
-        _initialSelectedResultUids = new HashSet<string>(initialSelectedResultUids ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        _initialSelectedResultUids = new HashSet<string>(initialSelectedResultUids, StringComparer.OrdinalIgnoreCase);
+
+        var saved = AppConfigManager.LoadMultiExportSettings();
+        _outputDir = saved.OutputDir;
+        _filenameTemplate = saved.FilenameTemplate;
+        _mode = saved.Mode;
+        _dataFormat = saved.DataFormat;
+        _exportSource = saved.ExportSource;
+        _exportRaw = saved.ExportRaw;
+        _exportActions = saved.ExportActions;
+        _exportAoi = saved.ExportAoi;
+        _exportGazeImage = saved.ExportGazeImage;
+        _exportHeatImage = saved.ExportHeatImage;
+        _exportEdf = saved.ExportEdf;
     }
 
     public async Task InitializeAsync()
     {
-        StatusText = "Загрузка…";
+        IsBusy = true;
+        StatusText = "Загрузка exp.json…";
 
-        // загрузка настроек
-        var cfg = AppConfigManager.LoadMultiExportSettings();
-        OutputDir = cfg.OutputDir;
-        if (!Directory.Exists(OutputDir))
+        await Task.Run(() =>
         {
-            try { Directory.CreateDirectory(OutputDir); } catch { }
-        }
+            var path = Path.Combine(ExpDir, "exp.json");
+            if (!File.Exists(path)) return;
 
-        FilenameTemplate = cfg.FilenameTemplate;
-        Mode = cfg.Mode;
-
-        ExportSource = cfg.ExportSource;
-        ExportRaw = cfg.ExportRaw;
-        ExportActions = cfg.ExportActions;
-        ExportAoi = cfg.ExportAoi;
-        ExportGazeImage = cfg.ExportGazeImage;
-        ExportHeatImage = cfg.ExportHeatImage;
-
-        DataFormat = cfg.DataFormat;
-        ImageFormat = cfg.ImageFormat;
-
-        // exp.json
-        var expPath = Path.Combine(ExpDir, "exp.json");
-        if (!File.Exists(expPath))
-            throw new FileNotFoundException("Не найден exp.json", expPath);
-
-        Experiment = await Task.Run(() =>
-        {
-            var json = File.ReadAllText(expPath);
-            return JsonSerializer.Deserialize<ExperimentFile>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                   ?? throw new InvalidOperationException("Не удалось распарсить exp.json");
+            var json = File.ReadAllText(path);
+            Experiment = JsonSerializer.Deserialize<ExperimentFile>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidOperationException("Не удалось распарсить exp.json");
         });
+
+        HasEeg = (Experiment?.Devices ?? new List<DeviceFile>())
+            .Any(d => (d.DevType ?? "").IndexOf("eeg", StringComparison.OrdinalIgnoreCase) >= 0);
 
         LoadStimuli();
         LoadResults();
@@ -201,6 +200,7 @@ public sealed class MultiExportViewModel : ObservableObject
         ApplyConstraints();
         ValidateTemplate();
 
+        IsBusy = false;
         StatusText = $"Готово: стимулы={Stimuli.Count}, результаты={Results.Count}";
         OnPropertyChanged(nameof(CanStartExport));
     }
@@ -233,6 +233,7 @@ public sealed class MultiExportViewModel : ObservableObject
             OutputDir = OutputDir,
             FilenameTemplate = FilenameTemplate,
             Mode = Mode,
+            DataFormat = DataFormat,
 
             ExportSource = ExportSource,
             ExportRaw = ExportRaw,
@@ -240,9 +241,7 @@ public sealed class MultiExportViewModel : ObservableObject
             ExportAoi = ExportAoi,
             ExportGazeImage = ExportGazeImage,
             ExportHeatImage = ExportHeatImage,
-
-            DataFormat = DataFormat,
-            ImageFormat = ImageFormat
+            ExportEdf = ExportEdf
         };
     }
 
@@ -253,6 +252,7 @@ public sealed class MultiExportViewModel : ObservableObject
             OutputDir = OutputDir,
             FilenameTemplate = FilenameTemplate,
             Mode = Mode,
+            DataFormat = DataFormat,
 
             ExportSource = ExportSource,
             ExportRaw = ExportRaw,
@@ -260,9 +260,7 @@ public sealed class MultiExportViewModel : ObservableObject
             ExportAoi = ExportAoi,
             ExportGazeImage = ExportGazeImage,
             ExportHeatImage = ExportHeatImage,
-
-            DataFormat = DataFormat,
-            ImageFormat = ImageFormat
+            ExportEdf = ExportEdf
         };
     }
 
@@ -293,6 +291,10 @@ public sealed class MultiExportViewModel : ObservableObject
             ExportHeatImage = false;
         }
 
+        // EDF — только SeparateFiles + EEG
+        if (!CanExportEdf)
+            ExportEdf = false;
+
         // Raw/Source запрещены в AllInOne
         if (!CanExportRawOrSource)
         {
@@ -305,8 +307,13 @@ public sealed class MultiExportViewModel : ObservableObject
     {
         Stimuli.Clear();
 
+        if (Experiment == null) return;
+
+        // Путь к папке со стимулами
+        var stimuliDir = Path.Combine(ExpDir, "stimuli");
+
         // фильтр: IMAGE (мягко: по расширению файла)
-        foreach (var st in Experiment!.Stimuls ?? new List<StimulFile>())
+        foreach (var st in Experiment.Stimuls ?? new List<StimulFile>())
         {
             // kind=0 — калибровка
             if ((st.Kind ?? 0) == 0) continue;
@@ -314,7 +321,7 @@ public sealed class MultiExportViewModel : ObservableObject
             var fn = st.Filename ?? "";
             if (!IsImageFile(fn)) continue;
 
-            var item = new MultiExportStimulusItem(st, isSelected: true);
+            var item = new MultiExportStimulusItem(st, isSelected: true, stimuliDir);
             item.PropertyChanged += (_, __) => OnPropertyChanged(nameof(CanStartExport));
             Stimuli.Add(item);
         }
@@ -326,6 +333,8 @@ public sealed class MultiExportViewModel : ObservableObject
 
         var dir = Path.Combine(ExpDir, "results");
         if (!Directory.Exists(dir)) return;
+
+        var items = new List<MultiExportResultItem>();
 
         foreach (var rdir in Directory.EnumerateDirectories(dir))
         {
@@ -346,6 +355,12 @@ public sealed class MultiExportViewModel : ObservableObject
 
             var item = new MultiExportResultItem(uid, rf, preselect);
             item.PropertyChanged += (_, __) => OnPropertyChanged(nameof(CanStartExport));
+            items.Add(item);
+        }
+
+        // Сортируем по дате (новые сверху)
+        foreach (var item in items.OrderByDescending(r => r.Date))
+        {
             Results.Add(item);
         }
     }
