@@ -219,21 +219,22 @@
                 </Grid>
 
                 <!-- Нижняя панель: настройки экспорта -->
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+                <Grid Grid.Row="2" Margin="0,14,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Папка" Style="{StaticResource FormLabelStyle}"/>
+                    <TextBlock Text="Папка" Style="{StaticResource FormLabelStyle}"/>
                 <TextBox Grid.Column="1"
                          Text="{Binding OutputDir, UpdateSourceTrigger=PropertyChanged}"
                          MinWidth="520"/>
@@ -390,6 +391,7 @@
                 <TextBlock Grid.Row="6" Grid.ColumnSpan="3" Margin="0,10,0,0"
                            Foreground="{StaticResource TextBrush}"
                            Text="{Binding StatusText}"/>
+                </Grid>
             </Grid>
         </Border>
     </Grid>
