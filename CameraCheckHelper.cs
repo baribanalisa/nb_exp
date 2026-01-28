@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using MessageBox = System.Windows.MessageBox;
 
 namespace NeuroBureau.Experiment;
 
@@ -27,7 +28,11 @@ public static class CameraCheckHelper
         // 1. Проверяем, есть ли камера в списке устройств
         var devices = await CameraDeviceProvider.GetVideoDevicesAsync(ffmpegExe);
 
-        if (!devices.Contains(cameraName))
+        var deviceExists = devices.Exists(d =>
+            string.Equals(d.FriendlyName, cameraName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(d.AlternativeName, cameraName, StringComparison.OrdinalIgnoreCase));
+
+        if (!deviceExists)
         {
             return new CameraCheckResult(false, $"Камера '{cameraName}' не найдена в списке устройств");
         }

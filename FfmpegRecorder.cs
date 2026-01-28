@@ -52,7 +52,10 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
         string outputPath,
         bool recordAudio,
         string? audioDeviceName,
-        int fps = 30)
+        string? framerate = null,
+        string? inputFormat = null,
+        string? videoSize = null,
+        string? rtbufsize = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
@@ -69,11 +72,17 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
             ? "-c:a aac -b:a 128k -ar 48000 -ac 2 -shortest "
             : "";
 
-        // ========== Попытка 1: стандартные параметры с framerate ==========
-        // НЕ используем input_format, video_size, pixel_format - даём FFmpeg договориться с камерой
+        var framerateValue = string.IsNullOrWhiteSpace(framerate) ? "30" : framerate.Trim();
+        var framerateArg = string.IsNullOrWhiteSpace(framerateValue) ? "" : $"-framerate {framerateValue} ";
+        var inputFormatArg = string.IsNullOrWhiteSpace(inputFormat) ? "" : $"-input_format {inputFormat.Trim()} ";
+        var videoSizeArg = string.IsNullOrWhiteSpace(videoSize) ? "" : $"-video_size {videoSize.Trim()} ";
+        var rtbufsizeValue = string.IsNullOrWhiteSpace(rtbufsize) ? "512M" : rtbufsize.Trim();
+        var rtbufsizeArg = string.IsNullOrWhiteSpace(rtbufsizeValue) ? "" : $"-rtbufsize {rtbufsizeValue} ";
+
+        // ========== Попытка 1: параметры камеры (если заданы), с framerate ==========
         var args1 =
             $"-y -hide_banner -loglevel warning " +
-            $"-f dshow -rtbufsize 512M -thread_queue_size 1024 -framerate {fps} " +
+            $"-f dshow {rtbufsizeArg}-thread_queue_size 1024 {videoSizeArg}{framerateArg}{inputFormatArg}" +
             $"-i {inputSpec} " +
             $"-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p " +
             audioParams +
@@ -90,7 +99,7 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
             // ========== Попытка 2: без явного framerate (камера сама выберет) ==========
             var args2 =
                 $"-y -hide_banner -loglevel warning " +
-                $"-f dshow -rtbufsize 512M -thread_queue_size 1024 " +
+                $"-f dshow {rtbufsizeArg}-thread_queue_size 1024 {videoSizeArg}{inputFormatArg}" +
                 $"-i {inputSpec} " +
                 $"-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p " +
                 audioParams +

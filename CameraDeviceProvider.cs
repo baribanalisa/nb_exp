@@ -12,7 +12,7 @@ internal static class CameraDeviceProvider
     /// <summary>
     /// Ищет ffmpeg.exe: сначала рядом с приложением, потом в PATH.
     /// </summary>
-    public static string? FindFfmpegExe()
+    public static string? FindFfmpegExe(bool allowFfmpegFromPath = true)
     {
         // 1. Рядом с приложением
         var local1 = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
@@ -27,6 +27,9 @@ internal static class CameraDeviceProvider
         if (File.Exists(local3)) return local3;
 
         // 4. В PATH
+        if (!allowFfmpegFromPath)
+            return null;
+
         try
         {
             var psi = new ProcessStartInfo("where", "ffmpeg")
@@ -102,13 +105,13 @@ internal static class CameraDeviceProvider
     /// <summary>
     /// Получает список видео-устройств (камер).
     /// </summary>
-    public static async Task<List<string>> GetVideoDevicesAsync(string ffmpegExe)
+    public static async Task<List<CameraDeviceInfo>> GetVideoDevicesAsync(string ffmpegExe)
     {
-        var all = await GetAllQuotedDevicesAsync(ffmpegExe);
-        var res = new List<string>();
+        var all = await GetAllDeviceInfosAsync(ffmpegExe);
+        var res = new List<CameraDeviceInfo>();
 
         foreach (var d in all)
-            if (!IsLikelyAudio(d)) res.Add(d);
+            if (!IsLikelyAudio(d.FriendlyName)) res.Add(d);
 
         // fallback: если фильтр "съел всё" — верни как было
         return res.Count > 0 ? res : all;
@@ -119,11 +122,12 @@ internal static class CameraDeviceProvider
     /// </summary>
     public static async Task<List<string>> GetAudioDevicesAsync(string ffmpegExe)
     {
-        var all = await GetAllQuotedDevicesAsync(ffmpegExe);
+        var all = await GetAllDeviceInfosAsync(ffmpegExe);
         var res = new List<string>();
 
         foreach (var d in all)
-            if (IsLikelyAudio(d)) res.Add(d);
+            if (IsLikelyAudio(d.FriendlyName))
+                res.Add(d.FriendlyName);
 
         return res;
     }
@@ -229,7 +233,7 @@ internal static class CameraDeviceProvider
                s.Contains("науш");
     }
 
-    private static async Task<List<string>> GetAllQuotedDevicesAsync(string ffmpegExe)
+    private static async Task<List<CameraDeviceInfo>> GetAllDeviceInfosAsync(string ffmpegExe)
     {
         // list_devices пишет в stderr
         var psi = new ProcessStartInfo(ffmpegExe, "-hide_banner -list_devices true -f dshow -i dummy")
@@ -241,7 +245,7 @@ internal static class CameraDeviceProvider
         };
 
         using var p = Process.Start(psi);
-        if (p == null) return new List<string>();
+        if (p == null) return new List<CameraDeviceInfo>();
 
         var stdoutTask = p.StandardOutput.ReadToEndAsync();
         var stderrTask = p.StandardError.ReadToEndAsync();
@@ -254,13 +258,13 @@ internal static class CameraDeviceProvider
         var text = stdout + "\n" + stderr;
 
         var rx = new Regex("\"([^\"]+)\"", RegexOptions.Compiled);
-        var result = new List<string>();
+        var result = new List<CameraDeviceInfo>();
+        var currentIndex = -1;
 
         foreach (var raw in text.Split('\n'))
         {
             var line = raw.Trim();
             if (!line.Contains("\"")) continue;
-            if (line.Contains("Alternative name", StringComparison.OrdinalIgnoreCase)) continue;
 
             var m = rx.Match(line);
             if (!m.Success) continue;
@@ -268,8 +272,27 @@ internal static class CameraDeviceProvider
             var name = m.Groups[1].Value.Trim();
             if (string.IsNullOrWhiteSpace(name)) continue;
 
-            if (!result.Contains(name))
-                result.Add(name);
+            if (line.Contains("Alternative name", StringComparison.OrdinalIgnoreCase))
+            {
+                if (currentIndex >= 0 && currentIndex < result.Count)
+                {
+                    var existing = result[currentIndex];
+                    if (string.IsNullOrWhiteSpace(existing.AlternativeName))
+                        result[currentIndex] = existing with { AlternativeName = name };
+                }
+                continue;
+            }
+
+            var existingIndex = result.FindIndex(d =>
+                string.Equals(d.FriendlyName, name, StringComparison.OrdinalIgnoreCase));
+            if (existingIndex >= 0)
+            {
+                currentIndex = existingIndex;
+                continue;
+            }
+
+            result.Add(new CameraDeviceInfo(name, null));
+            currentIndex = result.Count - 1;
         }
 
         return result;
