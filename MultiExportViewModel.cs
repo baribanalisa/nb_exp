@@ -423,6 +423,6 @@ public sealed class MultiExportViewModel : ObservableObject
 
     private void UpdateStatusText()
     {
-        StatusText = $"Готово: стимулы={SelectedStimuliCount}/{Stimuli.Count}, результаты={SelectedResultsCount}/{Results.Count}";
+        StatusText = $"Выбрано: стимулы={SelectedStimuliCount}/{Stimuli.Count}, результаты={SelectedResultsCount}/{Results.Count}";
     }
 }
