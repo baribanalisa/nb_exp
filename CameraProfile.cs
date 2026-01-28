@@ -1,6 +1,6 @@
 namespace NeuroBureau.Experiment;
 
-internal sealed class CameraProfile
+public sealed class CameraProfile
 {
     public string DeviceId { get; set; } = string.Empty;
     public string FriendlyName { get; set; } = string.Empty;
