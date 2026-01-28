@@ -67,11 +67,11 @@ public partial class MultiExportWindow : Window
 
             if (!Vm.CanStartExport)
             {
-                MessageBox.Show(
+                System.Windows.MessageBox.Show(
                     "Проверь: выбраны стимулы/результаты, корректна папка и шаблон имени файла.",
                     "Мультиэкспорт",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
                 return;
             }
 
@@ -98,12 +98,12 @@ public partial class MultiExportWindow : Window
             });
 
             Vm.StatusText = "Экспорт завершён!";
-            MessageBox.Show("Экспорт завершён!", "Мультиэкспорт", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show("Экспорт завершён!", "Мультиэкспорт", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             Vm.StatusText = $"Ошибка: {ex.Message}";
-            MessageBox.Show($"Ошибка при экспорте:\n{ex.Message}", "Мультиэкспорт", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show($"Ошибка при экспорте:\n{ex.Message}", "Мультиэкспорт", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
         finally
         {

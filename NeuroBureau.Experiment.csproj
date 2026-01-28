@@ -20,6 +20,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="LibVLCSharp.WPF" Version="3.9.5" />
     <PackageReference Include="System.Management" Version="10.0.1" />
     <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />

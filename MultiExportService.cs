@@ -5,8 +5,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading;
 using ClosedXML.Excel;
 
@@ -25,7 +25,6 @@ public sealed class MultiExportService
 
     private readonly FilenameTemplateResolver _resolver = new();
 
-    private const int TrackerRecordSize = 160; // TrackerData.Size
     private const int MkRecordSize = 32;
 
     public MultiExportService(string expDir, ExperimentFile exp)
@@ -71,7 +70,6 @@ public sealed class MultiExportService
             throw new InvalidOperationException("EDF доступен только в режиме «Отдельные файлы» и только если в эксперименте есть ЭЭГ.");
 
         var now = DateTime.Now;
-        var resultByUid = results.ToDictionary(r => r.Uid, r => r, StringComparer.OrdinalIgnoreCase);
 
         void Report(string s) => progress?.Invoke(s);
 
@@ -80,19 +78,19 @@ public sealed class MultiExportService
         switch (options.Mode)
         {
             case MultiExportMode.SeparateFiles:
-                ExportSeparateFiles(options, stimuli, results, resultByUid, now, Report, ct);
+                ExportSeparateFiles(options, stimuli, results, now, Report, ct);
                 break;
 
             case MultiExportMode.FilePerStimul:
-                ExportFilePerStimul(options, stimuli, results, resultByUid, now, Report, ct);
+                ExportFilePerStimul(options, stimuli, results, now, Report, ct);
                 break;
 
             case MultiExportMode.FilePerResult:
-                ExportFilePerResult(options, stimuli, results, resultByUid, now, Report, ct);
+                ExportFilePerResult(options, stimuli, results, now, Report, ct);
                 break;
 
             case MultiExportMode.AllInOne:
-                ExportAllInOne(options, stimuli, results, resultByUid, now, Report, ct);
+                ExportAllInOne(options, stimuli, results, now, Report, ct);
                 break;
 
             default:
@@ -106,7 +104,6 @@ public sealed class MultiExportService
         MultiExportOptions options,
         IReadOnlyList<StimulFile> stimuli,
         IReadOnlyList<MultiExportResult> results,
-        Dictionary<string, MultiExportResult> resultByUid,
         DateTime now,
         Action<string> report,
         CancellationToken ct)
@@ -141,7 +138,7 @@ public sealed class MultiExportService
                     ExportPrebuiltImageIfExists(options, now, rr, st, "heat", report);
 
                 if (options.ExportEdf)
-                    ExportEdfIfExists(options, now, rr, report);
+                    ExportEdfIfExists(options, now, rr, st, report);
             }
         }
     }
@@ -150,7 +147,6 @@ public sealed class MultiExportService
         MultiExportOptions options,
         IReadOnlyList<StimulFile> stimuli,
         IReadOnlyList<MultiExportResult> results,
-        Dictionary<string, MultiExportResult> resultByUid,
         DateTime now,
         Action<string> report,
         CancellationToken ct)
@@ -186,7 +182,6 @@ public sealed class MultiExportService
         MultiExportOptions options,
         IReadOnlyList<StimulFile> stimuli,
         IReadOnlyList<MultiExportResult> results,
-        Dictionary<string, MultiExportResult> resultByUid,
         DateTime now,
         Action<string> report,
         CancellationToken ct)
@@ -220,7 +215,6 @@ public sealed class MultiExportService
         MultiExportOptions options,
         IReadOnlyList<StimulFile> stimuli,
         IReadOnlyList<MultiExportResult> results,
-        Dictionary<string, MultiExportResult> resultByUid,
         DateTime now,
         Action<string> report,
         CancellationToken ct)
@@ -280,9 +274,9 @@ public sealed class MultiExportService
         var data = ReadTrackerData(src);
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteTrackerDataXlsx(dst, data, includeStimulColumn: false, includeResultColumn: false);
+            WriteTrackerDataXlsx(dst, data, null);
         else
-            WriteTrackerDataCsv(dst, data, includeStimulColumn: false, includeResultColumn: false);
+            WriteTrackerDataCsv(dst, data, null);
     }
 
     private void ExportRawGaze_AggregatedPerStimul(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
@@ -291,7 +285,7 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, results[0], st, "raw_gaze_per_stimul", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string resultUid, TrackerRecord r)>();
+        var allData = new List<(string uid, TrackerData r)>();
 
         foreach (var rr in results)
         {
@@ -303,9 +297,9 @@ public sealed class MultiExportService
         }
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteTrackerDataXlsx(dst, allData, includeResultColumn: true);
+            WriteTrackerDataXlsx(dst, allData, "result_uid");
         else
-            WriteTrackerDataCsv(dst, allData, includeResultColumn: true);
+            WriteTrackerDataCsv(dst, allData, "result_uid");
     }
 
     private void ExportRawGaze_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
@@ -314,7 +308,7 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, rr, stimuli[0], "raw_gaze_per_result", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string stimUid, TrackerRecord r)>();
+        var allData = new List<(string uid, TrackerData r)>();
 
         foreach (var st in stimuli)
         {
@@ -326,9 +320,9 @@ public sealed class MultiExportService
         }
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteTrackerDataXlsx(dst, allData, includeStimulColumn: true);
+            WriteTrackerDataXlsx(dst, allData, "stimul_uid");
         else
-            WriteTrackerDataCsv(dst, allData, includeStimulColumn: true);
+            WriteTrackerDataCsv(dst, allData, "stimul_uid");
     }
 
     // ===== Actions =====
@@ -347,9 +341,9 @@ public sealed class MultiExportService
         var data = ReadActionsData(src);
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteActionsDataXlsx(dst, data, includeStimulColumn: false, includeResultColumn: false);
+            WriteActionsDataXlsx(dst, data, null);
         else
-            WriteActionsDataCsv(dst, data, includeStimulColumn: false, includeResultColumn: false);
+            WriteActionsDataCsv(dst, data, null);
     }
 
     private void ExportActions_AggregatedPerStimul(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
@@ -360,7 +354,7 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, results[0], st, "actions_per_stimul", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string resultUid, ActionRecord r)>();
+        var allData = new List<(string uid, ActionRecord r)>();
 
         foreach (var rr in results)
         {
@@ -372,9 +366,9 @@ public sealed class MultiExportService
         }
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteActionsDataXlsx(dst, allData, includeResultColumn: true);
+            WriteActionsDataXlsx(dst, allData, "result_uid");
         else
-            WriteActionsDataCsv(dst, allData, includeResultColumn: true);
+            WriteActionsDataCsv(dst, allData, "result_uid");
     }
 
     private void ExportActions_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
@@ -385,7 +379,7 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, rr, stimuli[0], "actions_per_result", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string stimUid, ActionRecord r)>();
+        var allData = new List<(string uid, ActionRecord r)>();
 
         foreach (var st in stimuli)
         {
@@ -397,12 +391,12 @@ public sealed class MultiExportService
         }
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteActionsDataXlsx(dst, allData, includeStimulColumn: true);
+            WriteActionsDataXlsx(dst, allData, "stimul_uid");
         else
-            WriteActionsDataCsv(dst, allData, includeStimulColumn: true);
+            WriteActionsDataCsv(dst, allData, "stimul_uid");
     }
 
-    // ===== AOI (CSV/XLSX вместо JSON) =====
+    // ===== AOI (CSV/XLSX) =====
 
     private void ExportAoi(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
     {
@@ -416,15 +410,17 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, rr, st, "aoi", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
+        var data = aoiList.Select(a => (st.Uid, a)).ToList();
+
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteAoiDataXlsx(dst, aoiList, st.Uid);
+            WriteAoiDataXlsx(dst, data);
         else
-            WriteAoiDataCsv(dst, aoiList, st.Uid);
+            WriteAoiDataCsv(dst, data);
     }
 
     private void ExportAoi_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
     {
-        var allAoi = new List<(string stimUid, List<AoiElement> aois)>();
+        var allAoi = new List<(string stimUid, AoiElement aoi)>();
 
         foreach (var st in stimuli)
         {
@@ -432,8 +428,11 @@ public sealed class MultiExportService
             if (aoiPath == null) continue;
 
             var aoiList = LoadAoiElements(aoiPath);
-            if (aoiList != null && aoiList.Count > 0)
-                allAoi.Add((st.Uid, aoiList));
+            if (aoiList != null)
+            {
+                foreach (var aoi in aoiList)
+                    allAoi.Add((st.Uid, aoi));
+            }
         }
 
         if (allAoi.Count == 0) return;
@@ -443,14 +442,14 @@ public sealed class MultiExportService
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteAoiDataXlsx_Aggregated(dst, allAoi);
+            WriteAoiDataXlsx(dst, allAoi);
         else
-            WriteAoiDataCsv_Aggregated(dst, allAoi);
+            WriteAoiDataCsv(dst, allAoi);
     }
 
     private void ExportAoi_AllInOne(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, IReadOnlyList<StimulFile> stimuli)
     {
-        var allAoi = new List<(string stimUid, List<AoiElement> aois)>();
+        var allAoi = new List<(string stimUid, AoiElement aoi)>();
 
         foreach (var st in stimuli)
         {
@@ -458,8 +457,11 @@ public sealed class MultiExportService
             if (aoiPath == null) continue;
 
             var aoiList = LoadAoiElements(aoiPath);
-            if (aoiList != null && aoiList.Count > 0)
-                allAoi.Add((st.Uid, aoiList));
+            if (aoiList != null)
+            {
+                foreach (var aoi in aoiList)
+                    allAoi.Add((st.Uid, aoi));
+            }
         }
 
         if (allAoi.Count == 0) return;
@@ -469,19 +471,19 @@ public sealed class MultiExportService
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
         if (options.DataFormat == ExportDataFormat.XLSX)
-            WriteAoiDataXlsx_Aggregated(dst, allAoi);
+            WriteAoiDataXlsx(dst, allAoi);
         else
-            WriteAoiDataCsv_Aggregated(dst, allAoi);
+            WriteAoiDataCsv(dst, allAoi);
     }
 
     // ===== AOI Writing Methods =====
 
-    private void WriteAoiDataCsv(string path, List<AoiElement> aoiList, string stimUid)
+    private void WriteAoiDataCsv(string path, List<(string stimUid, AoiElement aoi)> data)
     {
         using var sw = new StreamWriter(path);
         sw.WriteLine("stimul_uid;aoi_uid;aoi_name;aoi_type;color;line_width;points");
 
-        foreach (var aoi in aoiList)
+        foreach (var (stimUid, aoi) in data)
         {
             var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
             sw.Write(stimUid); sw.Write(';');
@@ -494,28 +496,7 @@ public sealed class MultiExportService
         }
     }
 
-    private void WriteAoiDataCsv_Aggregated(string path, List<(string stimUid, List<AoiElement> aois)> allAoi)
-    {
-        using var sw = new StreamWriter(path);
-        sw.WriteLine("stimul_uid;aoi_uid;aoi_name;aoi_type;color;line_width;points");
-
-        foreach (var (stimUid, aoiList) in allAoi)
-        {
-            foreach (var aoi in aoiList)
-            {
-                var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
-                sw.Write(stimUid); sw.Write(';');
-                sw.Write(aoi.Uid); sw.Write(';');
-                sw.Write(EscapeCsv(aoi.Name)); sw.Write(';');
-                sw.Write(aoi.Type.ToString()); sw.Write(';');
-                sw.Write(aoi.ColorHex); sw.Write(';');
-                sw.Write(aoi.LineWidth.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-                sw.WriteLine(points);
-            }
-        }
-    }
-
-    private void WriteAoiDataXlsx(string path, List<AoiElement> aoiList, string stimUid)
+    private void WriteAoiDataXlsx(string path, List<(string stimUid, AoiElement aoi)> data)
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("AOI");
@@ -529,7 +510,7 @@ public sealed class MultiExportService
         ws.Cell(1, 7).Value = "points";
 
         int row = 2;
-        foreach (var aoi in aoiList)
+        foreach (var (stimUid, aoi) in data)
         {
             var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
             ws.Cell(row, 1).Value = stimUid;
@@ -540,40 +521,6 @@ public sealed class MultiExportService
             ws.Cell(row, 6).Value = aoi.LineWidth;
             ws.Cell(row, 7).Value = points;
             row++;
-        }
-
-        ws.Columns().AdjustToContents();
-        wb.SaveAs(path);
-    }
-
-    private void WriteAoiDataXlsx_Aggregated(string path, List<(string stimUid, List<AoiElement> aois)> allAoi)
-    {
-        using var wb = new XLWorkbook();
-        var ws = wb.Worksheets.Add("AOI");
-
-        ws.Cell(1, 1).Value = "stimul_uid";
-        ws.Cell(1, 2).Value = "aoi_uid";
-        ws.Cell(1, 3).Value = "aoi_name";
-        ws.Cell(1, 4).Value = "aoi_type";
-        ws.Cell(1, 5).Value = "color";
-        ws.Cell(1, 6).Value = "line_width";
-        ws.Cell(1, 7).Value = "points";
-
-        int row = 2;
-        foreach (var (stimUid, aoiList) in allAoi)
-        {
-            foreach (var aoi in aoiList)
-            {
-                var points = string.Join(" ", aoi.NormalizedPoints.Select(p => $"{p.X.ToString(CultureInfo.InvariantCulture)},{p.Y.ToString(CultureInfo.InvariantCulture)}"));
-                ws.Cell(row, 1).Value = stimUid;
-                ws.Cell(row, 2).Value = aoi.Uid;
-                ws.Cell(row, 3).Value = aoi.Name;
-                ws.Cell(row, 4).Value = aoi.Type.ToString();
-                ws.Cell(row, 5).Value = aoi.ColorHex;
-                ws.Cell(row, 6).Value = aoi.LineWidth;
-                ws.Cell(row, 7).Value = points;
-                row++;
-            }
         }
 
         ws.Columns().AdjustToContents();
@@ -593,14 +540,13 @@ public sealed class MultiExportService
         }
     }
 
-    // ===== Helper methods for tracker and actions data =====
+    // ===== Tracker data reading and writing =====
 
-    private record TrackerRecord(double time, double x, double y, double z, int valid, double lx, double ly, double rx, double ry, double lp, double rp, int lopen, int ropen, double leyex, double leyey, double leyez, double reyex, double reyey, double reyez);
     private record ActionRecord(double time, uint mouse, uint key, double x, double y);
 
-    private List<TrackerRecord> ReadTrackerData(string path)
+    private List<TrackerData> ReadTrackerData(string path)
     {
-        var result = new List<TrackerRecord>();
+        var result = new List<TrackerData>();
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         var buf = new byte[TrackerData.Size];
 
@@ -609,8 +555,8 @@ public sealed class MultiExportService
             int read = fs.Read(buf, 0, buf.Length);
             if (read == 0 || read != buf.Length) break;
 
-            var r = TrackerData.FromBytes(buf);
-            result.Add(new TrackerRecord(r.time, r.x, r.y, r.z, r.valid, r.lx, r.ly, r.rx, r.ry, r.lp, r.rp, r.lopen, r.ropen, r.leyex, r.leyey, r.leyez, r.reyex, r.reyey, r.reyez));
+            var r = MemoryMarshal.Read<TrackerData>(buf);
+            result.Add(r);
         }
 
         return result;
@@ -639,7 +585,9 @@ public sealed class MultiExportService
         return result;
     }
 
-    private void WriteTrackerDataCsv(string path, IEnumerable<TrackerRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    // ===== CSV Writers =====
+
+    private void WriteTrackerDataCsv(string path, IEnumerable<TrackerData> data, string? uidColumn)
     {
         using var sw = new StreamWriter(path);
         sw.WriteLine("time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
@@ -668,18 +616,14 @@ public sealed class MultiExportService
         }
     }
 
-    private void WriteTrackerDataCsv(string path, IEnumerable<(string uid, TrackerRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    private void WriteTrackerDataCsv(string path, IEnumerable<(string uid, TrackerData r)> data, string uidColumn)
     {
         using var sw = new StreamWriter(path);
-        var header = includeResultColumn ? "result_uid;" : (includeStimulColumn ? "stimul_uid;" : "");
-        sw.WriteLine(header + "time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
+        sw.WriteLine($"{uidColumn};time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
 
         foreach (var (uid, r) in data)
         {
-            if (includeResultColumn || includeStimulColumn)
-            {
-                sw.Write(uid); sw.Write(';');
-            }
+            sw.Write(uid); sw.Write(';');
             sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
             sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
             sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
@@ -702,7 +646,40 @@ public sealed class MultiExportService
         }
     }
 
-    private void WriteTrackerDataXlsx(string path, IEnumerable<TrackerRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    private void WriteActionsDataCsv(string path, IEnumerable<ActionRecord> data, string? uidColumn)
+    {
+        using var sw = new StreamWriter(path);
+        sw.WriteLine("time_sec;mouse_button;keyboard_code;x;y");
+
+        foreach (var r in data)
+        {
+            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
+        }
+    }
+
+    private void WriteActionsDataCsv(string path, IEnumerable<(string uid, ActionRecord r)> data, string uidColumn)
+    {
+        using var sw = new StreamWriter(path);
+        sw.WriteLine($"{uidColumn};time_sec;mouse_button;keyboard_code;x;y");
+
+        foreach (var (uid, r) in data)
+        {
+            sw.Write(uid); sw.Write(';');
+            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+            sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
+        }
+    }
+
+    // ===== XLSX Writers =====
+
+    private void WriteTrackerDataXlsx(string path, IEnumerable<TrackerData> data, string? uidColumn)
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("RawGaze");
@@ -740,47 +717,39 @@ public sealed class MultiExportService
         wb.SaveAs(path);
     }
 
-    private void WriteTrackerDataXlsx(string path, IEnumerable<(string uid, TrackerRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    private void WriteTrackerDataXlsx(string path, IEnumerable<(string uid, TrackerData r)> data, string uidColumn)
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("RawGaze");
 
-        int col = 1;
-        if (includeResultColumn)
-            ws.Cell(1, col++).Value = "result_uid";
-        else if (includeStimulColumn)
-            ws.Cell(1, col++).Value = "stimul_uid";
-
+        ws.Cell(1, 1).Value = uidColumn;
         var headers = new[] { "time_sec", "x", "y", "z", "valid", "lx", "ly", "rx", "ry", "lp", "rp", "lopen", "ropen", "leyex", "leyey", "leyez", "reyex", "reyey", "reyez" };
-        foreach (var h in headers)
-            ws.Cell(1, col++).Value = h;
+        for (int i = 0; i < headers.Length; i++)
+            ws.Cell(1, i + 2).Value = headers[i];
 
         int row = 2;
         foreach (var (uid, r) in data)
         {
-            col = 1;
-            if (includeResultColumn || includeStimulColumn)
-                ws.Cell(row, col++).Value = uid;
-
-            ws.Cell(row, col++).Value = r.time;
-            ws.Cell(row, col++).Value = r.x;
-            ws.Cell(row, col++).Value = r.y;
-            ws.Cell(row, col++).Value = r.z;
-            ws.Cell(row, col++).Value = r.valid;
-            ws.Cell(row, col++).Value = r.lx;
-            ws.Cell(row, col++).Value = r.ly;
-            ws.Cell(row, col++).Value = r.rx;
-            ws.Cell(row, col++).Value = r.ry;
-            ws.Cell(row, col++).Value = r.lp;
-            ws.Cell(row, col++).Value = r.rp;
-            ws.Cell(row, col++).Value = r.lopen;
-            ws.Cell(row, col++).Value = r.ropen;
-            ws.Cell(row, col++).Value = r.leyex;
-            ws.Cell(row, col++).Value = r.leyey;
-            ws.Cell(row, col++).Value = r.leyez;
-            ws.Cell(row, col++).Value = r.reyex;
-            ws.Cell(row, col++).Value = r.reyey;
-            ws.Cell(row, col++).Value = r.reyez;
+            ws.Cell(row, 1).Value = uid;
+            ws.Cell(row, 2).Value = r.time;
+            ws.Cell(row, 3).Value = r.x;
+            ws.Cell(row, 4).Value = r.y;
+            ws.Cell(row, 5).Value = r.z;
+            ws.Cell(row, 6).Value = r.valid;
+            ws.Cell(row, 7).Value = r.lx;
+            ws.Cell(row, 8).Value = r.ly;
+            ws.Cell(row, 9).Value = r.rx;
+            ws.Cell(row, 10).Value = r.ry;
+            ws.Cell(row, 11).Value = r.lp;
+            ws.Cell(row, 12).Value = r.rp;
+            ws.Cell(row, 13).Value = r.lopen;
+            ws.Cell(row, 14).Value = r.ropen;
+            ws.Cell(row, 15).Value = r.leyex;
+            ws.Cell(row, 16).Value = r.leyey;
+            ws.Cell(row, 17).Value = r.leyez;
+            ws.Cell(row, 18).Value = r.reyex;
+            ws.Cell(row, 19).Value = r.reyey;
+            ws.Cell(row, 20).Value = r.reyez;
             row++;
         }
 
@@ -788,42 +757,7 @@ public sealed class MultiExportService
         wb.SaveAs(path);
     }
 
-    private void WriteActionsDataCsv(string path, IEnumerable<ActionRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
-    {
-        using var sw = new StreamWriter(path);
-        sw.WriteLine("time_sec;mouse_button;keyboard_code;x;y");
-
-        foreach (var r in data)
-        {
-            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
-        }
-    }
-
-    private void WriteActionsDataCsv(string path, IEnumerable<(string uid, ActionRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
-    {
-        using var sw = new StreamWriter(path);
-        var header = includeResultColumn ? "result_uid;" : (includeStimulColumn ? "stimul_uid;" : "");
-        sw.WriteLine(header + "time_sec;mouse_button;keyboard_code;x;y");
-
-        foreach (var (uid, r) in data)
-        {
-            if (includeResultColumn || includeStimulColumn)
-            {
-                sw.Write(uid); sw.Write(';');
-            }
-            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
-        }
-    }
-
-    private void WriteActionsDataXlsx(string path, IEnumerable<ActionRecord> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    private void WriteActionsDataXlsx(string path, IEnumerable<ActionRecord> data, string? uidColumn)
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Actions");
@@ -849,35 +783,27 @@ public sealed class MultiExportService
         wb.SaveAs(path);
     }
 
-    private void WriteActionsDataXlsx(string path, IEnumerable<(string uid, ActionRecord r)> data, bool includeStimulColumn = false, bool includeResultColumn = false)
+    private void WriteActionsDataXlsx(string path, IEnumerable<(string uid, ActionRecord r)> data, string uidColumn)
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Actions");
 
-        int col = 1;
-        if (includeResultColumn)
-            ws.Cell(1, col++).Value = "result_uid";
-        else if (includeStimulColumn)
-            ws.Cell(1, col++).Value = "stimul_uid";
-
-        ws.Cell(1, col++).Value = "time_sec";
-        ws.Cell(1, col++).Value = "mouse_button";
-        ws.Cell(1, col++).Value = "keyboard_code";
-        ws.Cell(1, col++).Value = "x";
-        ws.Cell(1, col++).Value = "y";
+        ws.Cell(1, 1).Value = uidColumn;
+        ws.Cell(1, 2).Value = "time_sec";
+        ws.Cell(1, 3).Value = "mouse_button";
+        ws.Cell(1, 4).Value = "keyboard_code";
+        ws.Cell(1, 5).Value = "x";
+        ws.Cell(1, 6).Value = "y";
 
         int row = 2;
         foreach (var (uid, r) in data)
         {
-            col = 1;
-            if (includeResultColumn || includeStimulColumn)
-                ws.Cell(row, col++).Value = uid;
-
-            ws.Cell(row, col++).Value = r.time;
-            ws.Cell(row, col++).Value = r.mouse;
-            ws.Cell(row, col++).Value = r.key;
-            ws.Cell(row, col++).Value = r.x;
-            ws.Cell(row, col++).Value = r.y;
+            ws.Cell(row, 1).Value = uid;
+            ws.Cell(row, 2).Value = r.time;
+            ws.Cell(row, 3).Value = r.mouse;
+            ws.Cell(row, 4).Value = r.key;
+            ws.Cell(row, 5).Value = r.x;
+            ws.Cell(row, 6).Value = r.y;
             row++;
         }
 
@@ -912,12 +838,12 @@ public sealed class MultiExportService
         return patterns.FirstOrDefault(File.Exists);
     }
 
-    private void ExportEdfIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, Action<string> report)
+    private void ExportEdfIfExists(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, Action<string> report)
     {
         var edfPath = Path.Combine(_resultsDir, rr.Uid, "eeg.edf");
         if (!File.Exists(edfPath)) return;
 
-        var name = BuildFileName(options, now, rr, null!, "eeg", "edf");
+        var name = BuildFileName(options, now, rr, st, "eeg", "edf");
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
         File.Copy(edfPath, dst, overwrite: true);
@@ -927,18 +853,15 @@ public sealed class MultiExportService
 
     private string? FindAoiJson(string stimUid, string? preferredResultUid)
     {
-        // Сначала ищем в папке результата
         if (!string.IsNullOrWhiteSpace(preferredResultUid))
         {
             var path = Path.Combine(_resultsDir, preferredResultUid, stimUid, "aoi.json");
             if (File.Exists(path)) return path;
         }
 
-        // Потом в общей папке стимулов
         var stimPath = Path.Combine(_expDir, "stimuli", stimUid, "aoi.json");
         if (File.Exists(stimPath)) return stimPath;
 
-        // Ищем в любом результате
         if (Directory.Exists(_resultsDir))
         {
             foreach (var rdir in Directory.EnumerateDirectories(_resultsDir))
@@ -951,9 +874,10 @@ public sealed class MultiExportService
         return null;
     }
 
-    private string BuildFileName(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile? st, string type, string ext)
+    private string BuildFileName(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, string type, string ext)
     {
-        return _resolver.Resolve(options.FilenameTemplate, _exp, now, rr.Uid, rr.Result, st?.Uid ?? "", type, ext);
+        // FilenameTemplateResolver.Resolve signature: (template, now, exp, result, stimul, type, defaultExtensionWithoutDot)
+        return _resolver.Resolve(options.FilenameTemplate, now, _exp, rr.File, st, type, ext);
     }
 
     private static string EnsureUniquePath(string path)
