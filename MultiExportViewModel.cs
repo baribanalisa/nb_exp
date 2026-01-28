@@ -331,19 +331,17 @@ public sealed class MultiExportViewModel : ObservableObject
 
         if (Experiment == null) return;
 
-        // Путь к папке со стимулами
-        var stimuliDir = Path.Combine(ExpDir, "stimuli");
-
         // фильтр: IMAGE (мягко: по расширению файла)
         foreach (var st in Experiment.Stimuls ?? new List<StimulFile>())
         {
             // kind=0 — калибровка
             if ((st.Kind ?? 0) == 0) continue;
 
-            var fn = st.Filename ?? "";
-            if (!IsImageFile(fn)) continue;
+            var resolvedPath = ResolveStimulusPath(ExpDir, st.Uid, st.Filename);
+            if (string.IsNullOrWhiteSpace(resolvedPath)) continue;
+            if (!IsImageFile(resolvedPath)) continue;
 
-            var item = new MultiExportStimulusItem(st, isSelected: true, stimuliDir);
+            var item = new MultiExportStimulusItem(st, isSelected: true, resolvedPath);
             item.PropertyChanged += (_, __) =>
             {
                 OnPropertyChanged(nameof(CanStartExport));
@@ -401,6 +399,26 @@ public sealed class MultiExportViewModel : ObservableObject
     {
         var ext = Path.GetExtension(pathOrName).ToLowerInvariant();
         return ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp";
+    }
+
+    private static string? ResolveStimulusPath(string expDir, string uid, string? filename)
+    {
+        if (string.IsNullOrWhiteSpace(filename)) return null;
+
+        var p1 = Path.Combine(expDir, uid, filename);
+        if (File.Exists(p1)) return p1;
+
+        var p2 = Path.Combine(expDir, filename);
+        if (File.Exists(p2)) return p2;
+
+        try
+        {
+            return Directory.EnumerateFiles(expDir, filename, SearchOption.AllDirectories).FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void UpdateStatusText()

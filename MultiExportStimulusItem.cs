@@ -25,15 +25,14 @@ public sealed class MultiExportStimulusItem : ObservableObject
         set => SetProperty(ref _thumbnail, value);
     }
 
-    public MultiExportStimulusItem(StimulFile stimulus, bool isSelected, string? stimuliDir = null)
+    public MultiExportStimulusItem(StimulFile stimulus, bool isSelected, string? filePath = null)
     {
         Stimulus = stimulus;
         _isSelected = isSelected;
         
         // Генерируем миниатюру
-        if (!string.IsNullOrWhiteSpace(stimuliDir) && !string.IsNullOrWhiteSpace(stimulus.Filename))
+        if (!string.IsNullOrWhiteSpace(filePath))
         {
-            var filePath = Path.Combine(stimuliDir, stimulus.Filename);
             _thumbnail = GenerateThumbnail(filePath);
         }
     }
