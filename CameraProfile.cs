@@ -8,9 +8,11 @@ internal sealed class CameraProfile
     public string VideoSize { get; set; } = string.Empty;
     public string Framerate { get; set; } = string.Empty;
     public string? Rtbufsize { get; set; }
+
+    public string FpsDisplay => string.IsNullOrWhiteSpace(Framerate) ? "auto" : Framerate.Trim();
+
     public string ToDisplayString()
         => string.IsNullOrWhiteSpace(VideoSize)
-            ? $"{Fps} fps (авто-размер)"
-            : $"{VideoSize} @ {Fps} fps";
+            ? $"{FpsDisplay} fps (авто-размер)"
+            : $"{VideoSize} @ {FpsDisplay} fps";
 }
-

@@ -89,41 +89,6 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
         return await StartAsync(ffmpegExe, args, "записи камеры").ConfigureAwait(false);
     }
 
-    public static async Task<FfmpegRecorder> StartCameraAsync(
-        string ffmpegExe,
-        string cameraDeviceName,
-        string outputPath,
-        bool recordAudio,
-        string? audioDeviceName,
-        CameraProfile profile)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-
-        var cam = (cameraDeviceName ?? "").Replace("\"", "").Trim();
-        var mic = (audioDeviceName ?? "").Replace("\"", "").Trim();
-
-        var inputSpec = (recordAudio && !string.IsNullOrWhiteSpace(mic))
-            ? $"video=\"{cam}\":audio=\"{mic}\""
-            : $"video=\"{cam}\"";
-
-        var args =
-            $"-y -hide_banner -loglevel error " +
-            $"-f dshow -rtbufsize 256M " +
-
-            $"-video_size {profile.Width}x{profile.Height} " +
-            $"-framerate {profile.FrameRate} " +
-            $"-input_format {profile.InputFormat} " +
-            $"-i {inputSpec} " +
-
-            $"-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p " +
-            (recordAudio && !string.IsNullOrWhiteSpace(mic)
-                ? "-c:a aac -b:a 128k -ar 48000 -ac 2 -shortest "
-                : "") +
-            $"\"{outputPath}\"";
-
-        return await StartAsync(ffmpegExe, args, "записи камеры").ConfigureAwait(false);
-    }
-
     // Перегрузка, чтобы не чинить все места, где было StartAsync(exe,args)
     private static Task<FfmpegRecorder> StartAsync(string exe, string args)
         => StartAsync(exe, args, "записи");

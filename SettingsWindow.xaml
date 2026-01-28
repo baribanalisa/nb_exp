@@ -161,6 +161,14 @@
 
                     <ComboBox x:Name="CameraCombo" Margin="0,8,0,0" MinWidth="420" IsEnabled="False"/>
 
+                    <Button x:Name="CheckCameraButton"
+                            Content="Проверить камеру"
+                            Margin="0,8,0,0"
+                            Width="180"
+                            HorizontalAlignment="Left"
+                            Style="{StaticResource PillButton}"
+                            Click="CheckCamera_Click"/>
+
                     <TextBlock x:Name="CameraHintText"
                             Margin="0,6,0,0"
                             Opacity="0.7"

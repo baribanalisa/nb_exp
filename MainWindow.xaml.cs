@@ -1562,11 +1562,13 @@ public partial class MainWindow : Window
                         {
                             var camOut = Path.Combine(resultDir, "camera.mkv");
                             CameraProfile? cameraProfile = null;
+                            CameraDeviceInfo? selectedDevice = null;
+                            var canStartCamera = true;
 
                             if (!string.IsNullOrWhiteSpace(ffmpegExe))
                             {
                                 var devices = await CameraDeviceProvider.GetVideoDevicesAsync(ffmpegExe);
-                                var selectedDevice = devices.FirstOrDefault(d =>
+                                selectedDevice = devices.FirstOrDefault(d =>
                                         string.Equals(d.FriendlyName, _cameraDeviceName, StringComparison.OrdinalIgnoreCase))
                                     ?? devices.FirstOrDefault(d =>
                                         string.Equals(d.AlternativeName, _cameraDeviceName, StringComparison.OrdinalIgnoreCase));
@@ -1576,17 +1578,46 @@ public partial class MainWindow : Window
                                     cameraProfile = AppConfigManager.LoadCameraProfile(deviceId);
                             }
 
-                            camRec = await FfmpegRecorder.StartCameraAsync(
-                                ffmpegExe: ffmpegExe!,
-                                cameraDeviceName: _cameraDeviceName!,     // то, что ты сохраняешь из ComboBox
-                                outputPath: camOut,
-                                recordAudio: _recordAudio,                // чекбокс “звук”
-                                audioDeviceName: _audioDeviceName,        // выбранный микрофон
-                                framerate: cameraProfile?.Framerate,
-                                inputFormat: cameraProfile?.InputFormat,
-                                videoSize: cameraProfile?.VideoSize,
-                                rtbufsize: cameraProfile?.Rtbufsize
-                            );
+                            if (cameraProfile == null)
+                            {
+                                if (selectedDevice == null)
+                                {
+                                    MessageBox.Show(
+                                        "Не удалось определить выбранную камеру. Открой настройки и выбери устройство заново.",
+                                        "Запись камеры", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                    canStartCamera = false;
+                                }
+                                else
+                                {
+                                    try
+                                    {
+                                        cameraProfile = await CameraProfileProbe.ProbeAsync(ffmpegExe!, selectedDevice);
+                                        AppConfigManager.SaveCameraProfile(cameraProfile);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        MessageBox.Show(
+                                            "Не удалось подобрать рабочие параметры камеры.\n" + ex.Message,
+                                            "Запись камеры", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                        canStartCamera = false;
+                                    }
+                                }
+                            }
+
+                            if (canStartCamera && cameraProfile != null)
+                            {
+                                camRec = await FfmpegRecorder.StartCameraAsync(
+                                    ffmpegExe: ffmpegExe!,
+                                    cameraDeviceName: _cameraDeviceName!,     // то, что ты сохраняешь из ComboBox
+                                    outputPath: camOut,
+                                    recordAudio: _recordAudio,                // чекбокс “звук”
+                                    audioDeviceName: _audioDeviceName,        // выбранный микрофон
+                                    framerate: cameraProfile.Framerate,
+                                    inputFormat: cameraProfile.InputFormat,
+                                    videoSize: cameraProfile.VideoSize,
+                                    rtbufsize: cameraProfile.Rtbufsize
+                                );
+                            }
                         }
                         catch (Exception ex)
                         {

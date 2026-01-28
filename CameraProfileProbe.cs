@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace NeuroBureau.Experiment;
 
-internal sealed record CameraProfile(int Width, int Height, int FrameRate, string InputFormat)
+internal sealed record CameraProfileCandidate(int Width, int Height, int FrameRate, string InputFormat)
 {
     public override string ToString() => $"{Width}x{Height}@{FrameRate} ({InputFormat})";
 }
@@ -15,14 +15,16 @@ internal static class CameraProfileProbe
 {
     private sealed record ProbeResult(int ExitCode, string StdOut, string StdErr);
 
-    public static async Task<CameraProfile> ProbeAsync(string ffmpegExe, string cameraDeviceName)
+    public static async Task<CameraProfile> ProbeAsync(string ffmpegExe, CameraDeviceInfo device)
     {
         if (string.IsNullOrWhiteSpace(ffmpegExe))
             throw new ArgumentException("Не указан путь к ffmpeg.", nameof(ffmpegExe));
-        if (string.IsNullOrWhiteSpace(cameraDeviceName))
-            throw new ArgumentException("Не указано имя камеры.", nameof(cameraDeviceName));
+        if (device == null)
+            throw new ArgumentNullException(nameof(device));
+        if (string.IsNullOrWhiteSpace(device.FriendlyName))
+            throw new ArgumentException("Не указано имя камеры.", nameof(device));
 
-        var cam = cameraDeviceName.Replace("\"", "").Trim();
+        var cam = device.FriendlyName.Replace("\"", "").Trim();
         var capabilities = await ReadCapabilitiesAsync(ffmpegExe, cam).ConfigureAwait(false);
 
         var candidates = BuildCandidates();
@@ -38,7 +40,16 @@ internal static class CameraProfileProbe
 
             var result = await RunAsync(ffmpegExe, args).ConfigureAwait(false);
             if (result.ExitCode == 0 && !HasError(result.StdErr))
-                return candidate;
+                return new CameraProfile
+                {
+                    DeviceId = string.IsNullOrWhiteSpace(device.AlternativeName)
+                        ? device.FriendlyName
+                        : device.AlternativeName,
+                    FriendlyName = device.FriendlyName,
+                    InputFormat = candidate.InputFormat,
+                    VideoSize = $"{candidate.Width}x{candidate.Height}",
+                    Framerate = candidate.FrameRate.ToString()
+                };
 
             errors
                 .AppendLine($">>> {candidate}")
@@ -82,7 +93,7 @@ internal static class CameraProfileProbe
         return stdErr.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
-    private static List<CameraProfile> BuildCandidates()
+    private static List<CameraProfileCandidate> BuildCandidates()
     {
         var formats = new[] { "mjpeg", "yuyv422", "nv12" };
         var resolutions = new (int width, int height, int fps)[]
@@ -95,11 +106,11 @@ internal static class CameraProfileProbe
             (640, 480, 15),
         };
 
-        var list = new List<CameraProfile>();
+        var list = new List<CameraProfileCandidate>();
         foreach (var (width, height, fps) in resolutions)
         {
             foreach (var format in formats)
-                list.Add(new CameraProfile(width, height, fps, format));
+                list.Add(new CameraProfileCandidate(width, height, fps, format));
         }
 
         return list;

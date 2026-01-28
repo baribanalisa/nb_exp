@@ -25,6 +25,7 @@ public partial class SettingsWindow : Window
     private bool _recordDesktop;
     private bool _recordCamera;
     private string? _cameraDeviceName;
+    private CameraDeviceInfo? _selectedCameraDevice;
     public bool RecordDesktop => _recordDesktop;
     public bool RecordCamera => _recordCamera;
     public string? CameraDeviceName => _cameraDeviceName;
@@ -118,10 +119,12 @@ public partial class SettingsWindow : Window
     {
         _recordCamera = RecordCameraCheck.IsChecked == true;
         CameraCombo.IsEnabled = _recordCamera;
+        CheckCameraButton.IsEnabled = _recordCamera;
     }
     private async void SettingsWindow_Loaded(object sender, RoutedEventArgs e)
     {
         CameraCombo.IsEnabled = _recordCamera;
+        CheckCameraButton.IsEnabled = _recordCamera;
 
         var ffmpeg = CameraDeviceProvider.FindFfmpegExe(_allowFfmpegFromPath);
         if (string.IsNullOrWhiteSpace(ffmpeg))
@@ -133,6 +136,7 @@ public partial class SettingsWindow : Window
             RecordCameraCheck.IsChecked = false;
             RecordCameraCheck.IsEnabled = false;
             CameraCombo.IsEnabled = false;
+            CheckCameraButton.IsEnabled = false;
             return;
         }
 
@@ -145,6 +149,7 @@ public partial class SettingsWindow : Window
             _recordCamera = false;
             RecordCameraCheck.IsChecked = false;
             CameraCombo.IsEnabled = false;
+            CheckCameraButton.IsEnabled = false;
             return;
         }
 
@@ -158,18 +163,26 @@ public partial class SettingsWindow : Window
                     string.Equals(d.AlternativeName, _cameraDeviceName, StringComparison.OrdinalIgnoreCase));
 
             if (selected != null)
+            {
                 CameraCombo.SelectedItem = selected;
+                _selectedCameraDevice = selected;
+            }
             else
+            {
                 CameraCombo.SelectedIndex = 0;
+                _selectedCameraDevice = CameraCombo.SelectedItem as CameraDeviceInfo;
+            }
         }
         else
         {
             CameraCombo.SelectedIndex = 0;
+            _selectedCameraDevice = CameraCombo.SelectedItem as CameraDeviceInfo;
         }
 
         CameraCombo.SelectionChanged += (_, _) =>
         {
-            _cameraDeviceName = (CameraCombo.SelectedItem as CameraDeviceInfo)?.FriendlyName;
+            _selectedCameraDevice = CameraCombo.SelectedItem as CameraDeviceInfo;
+            _cameraDeviceName = _selectedCameraDevice?.FriendlyName;
         };
         var aud = await CameraDeviceProvider.GetAudioDevicesAsync(ffmpeg);
         if (aud.Count == 0)
@@ -203,6 +216,45 @@ public partial class SettingsWindow : Window
             };
         }
 
+    }
+
+    private async void CheckCamera_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedCameraDevice == null)
+        {
+            MessageBox.Show("Камера не выбрана.", "Проверка камеры",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var ffmpeg = CameraDeviceProvider.FindFfmpegExe(_allowFfmpegFromPath);
+        if (string.IsNullOrWhiteSpace(ffmpeg))
+        {
+            MessageBox.Show(
+                "ffmpeg не найден. Нужен локальный ffmpeg.exe рядом с приложением (ffmpeg.exe или ffmpeg\\ffmpeg.exe).",
+                "Проверка камеры", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        CheckCameraButton.IsEnabled = false;
+        try
+        {
+            var profile = await CameraProfileProbe.ProbeAsync(ffmpeg, _selectedCameraDevice);
+            AppConfigManager.SaveCameraProfile(profile);
+            MessageBox.Show(
+                $"Профиль камеры сохранён: {profile.ToDisplayString()}",
+                "Проверка камеры", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "Не удалось подобрать рабочие параметры камеры.\n" + ex.Message,
+                "Проверка камеры", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            CheckCameraButton.IsEnabled = _recordCamera;
+        }
     }
     private void LoadMonitors()
     {
@@ -282,7 +334,7 @@ public partial class SettingsWindow : Window
         _recordCamera = RecordCameraCheck.IsChecked == true;
         _recordAudio = RecordAudioCheck.IsChecked == true;
 
-        _cameraDeviceName = CameraCombo.SelectedItem as string;
+        _cameraDeviceName = _selectedCameraDevice?.FriendlyName;
         _audioDeviceName = _recordAudio ? (AudioCombo.SelectedItem as string) : null;
 
         AppConfigManager.Save(
