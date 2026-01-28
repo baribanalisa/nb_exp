@@ -316,78 +316,92 @@ public static class AppConfigManager
 
     // ====== multi-export (настройки окна мультиэкспорта) ======
 
-    public static MultiExportSettings LoadMultiExportSettings()
+    // Фрагмент для AppConfigManager.cs - методы работы с мультиэкспортом
+// Замените существующие методы LoadMultiExportSettings и SaveMultiExportSettings на эти
+
+public static MultiExportSettings LoadMultiExportSettings()
+{
+    var cfgPath = FindConfigPath();
+    var s = new MultiExportSettings();
+
+    if (!File.Exists(cfgPath)) return s;
+
+    try
     {
-        var cfgPath = FindConfigPath();
-        var s = new MultiExportSettings();
+        var obj = JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject;
+        if (obj == null) return s;
 
-        if (!File.Exists(cfgPath)) return s;
+        if (obj["multi-export"] is not JsonObject me) return s;
 
-        try
-        {
-            var obj = JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject;
-            if (obj == null) return s;
+        s.OutputDir = ReadString(me, "output-dir", s.OutputDir);
+        s.FilenameTemplate = ReadString(me, "filename-template", s.FilenameTemplate);
 
-            if (obj["multi-export"] is not JsonObject me) return s;
+        var modeStr = ReadString(me, "mode", s.Mode.ToString());
+        if (Enum.TryParse<MultiExportMode>(modeStr, ignoreCase: true, out var parsedMode))
+            s.Mode = parsedMode;
 
-            s.OutputDir = ReadString(me, "output-dir", s.OutputDir);
-            s.FilenameTemplate = ReadString(me, "filename-template", s.FilenameTemplate);
+        s.ExportSource = ReadBool(me["export-source"], s.ExportSource);
+        s.ExportRaw = ReadBool(me["export-raw"], s.ExportRaw);
+        s.ExportActions = ReadBool(me["export-actions"], s.ExportActions);
+        s.ExportAoi = ReadBool(me["export-aoi"], s.ExportAoi);
+        s.ExportGazeImage = ReadBool(me["export-gaze-image"], s.ExportGazeImage);
+        s.ExportHeatImage = ReadBool(me["export-heat-image"], s.ExportHeatImage);
 
-            var modeStr = ReadString(me, "mode", s.Mode.ToString());
-            if (Enum.TryParse<MultiExportMode>(modeStr, ignoreCase: true, out var parsedMode))
-                s.Mode = parsedMode;
+        // Загрузка форматов
+        var dataFormatStr = ReadString(me, "data-format", s.DataFormat.ToString());
+        if (Enum.TryParse<DataExportFormat>(dataFormatStr, ignoreCase: true, out var parsedDataFormat))
+            s.DataFormat = parsedDataFormat;
 
-            s.ExportSource = ReadBool(me["export-source"], s.ExportSource);
-            s.ExportRaw = ReadBool(me["export-raw"], s.ExportRaw);
-            s.ExportActions = ReadBool(me["export-actions"], s.ExportActions);
-            s.ExportAoi = ReadBool(me["export-aoi"], s.ExportAoi);
-            s.ExportGazeImage = ReadBool(me["export-gaze-image"], s.ExportGazeImage);
-            s.ExportHeatImage = ReadBool(me["export-heat-image"], s.ExportHeatImage);
-            s.ExportEdf = ReadBool(me["export-edf"], s.ExportEdf);
+        var imageFormatStr = ReadString(me, "image-format", s.ImageFormat.ToString());
+        if (Enum.TryParse<ImageExportFormat>(imageFormatStr, ignoreCase: true, out var parsedImageFormat))
+            s.ImageFormat = parsedImageFormat;
 
-            return s;
-        }
-        catch
-        {
-            return s;
-        }
+        return s;
+    }
+    catch
+    {
+        return s;
+    }
+}
+
+public static void SaveMultiExportSettings(MultiExportSettings settings)
+{
+    var cfgPath = FindConfigPath();
+    var dir = Path.GetDirectoryName(cfgPath);
+    if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+
+    JsonObject rootObj;
+    try
+    {
+        rootObj = File.Exists(cfgPath)
+            ? (JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject) ?? new JsonObject()
+            : new JsonObject();
+    }
+    catch
+    {
+        rootObj = new JsonObject();
     }
 
-    public static void SaveMultiExportSettings(MultiExportSettings settings)
+    rootObj["multi-export"] = new JsonObject
     {
-        var cfgPath = FindConfigPath();
-        var dir = Path.GetDirectoryName(cfgPath);
-        if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+        ["output-dir"] = settings.OutputDir,
+        ["filename-template"] = settings.FilenameTemplate,
+        ["mode"] = settings.Mode.ToString(),
 
-        JsonObject rootObj;
-        try
-        {
-            rootObj = File.Exists(cfgPath)
-                ? (JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject) ?? new JsonObject()
-                : new JsonObject();
-        }
-        catch
-        {
-            rootObj = new JsonObject();
-        }
+        ["export-source"] = settings.ExportSource,
+        ["export-raw"] = settings.ExportRaw,
+        ["export-actions"] = settings.ExportActions,
+        ["export-aoi"] = settings.ExportAoi,
+        ["export-gaze-image"] = settings.ExportGazeImage,
+        ["export-heat-image"] = settings.ExportHeatImage,
 
-        rootObj["multi-export"] = new JsonObject
-        {
-            ["output-dir"] = settings.OutputDir,
-            ["filename-template"] = settings.FilenameTemplate,
-            ["mode"] = settings.Mode.ToString(),
+        ["data-format"] = settings.DataFormat.ToString(),
+        ["image-format"] = settings.ImageFormat.ToString(),
+    };
 
-            ["export-source"] = settings.ExportSource,
-            ["export-raw"] = settings.ExportRaw,
-            ["export-actions"] = settings.ExportActions,
-            ["export-aoi"] = settings.ExportAoi,
-            ["export-gaze-image"] = settings.ExportGazeImage,
-            ["export-heat-image"] = settings.ExportHeatImage,
-            ["export-edf"] = settings.ExportEdf,
-        };
+    File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+}
 
-        File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-    }
 
     private static bool ReadBool(JsonNode? n, bool def = false)
     {

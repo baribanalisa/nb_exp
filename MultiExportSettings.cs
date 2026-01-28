@@ -4,6 +4,18 @@ using System.IO;
 
 namespace NeuroBureau.Experiment;
 
+public enum DataExportFormat
+{
+    CSV,
+    XLSX
+}
+
+public enum ImageExportFormat
+{
+    PNG,
+    JPG
+}
+
 public sealed class MultiExportSettings
 {
     public string OutputDir { get; set; } =
@@ -22,5 +34,7 @@ public sealed class MultiExportSettings
     public bool ExportGazeImage { get; set; } = false;
     public bool ExportHeatImage { get; set; } = false;
 
-    public bool ExportEdf { get; set; } = false;
+    // Форматы экспорта
+    public DataExportFormat DataFormat { get; set; } = DataExportFormat.CSV;
+    public ImageExportFormat ImageFormat { get; set; } = ImageExportFormat.PNG;
 }

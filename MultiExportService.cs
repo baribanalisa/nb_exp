@@ -81,6 +81,9 @@ public sealed class MultiExportService
         if (options.Mode == MultiExportMode.AllInOne && (options.ExportRaw || options.ExportSource))
             throw new InvalidOperationException("В режиме «Все в одном» запрещены сырые/исходные данные.");
 
+        if (options.Mode == MultiExportMode.AllInOne && (options.ExportGazeImage || options.ExportHeatImage))
+            throw new InvalidOperationException("В режиме «Все в одном» недоступен экспорт изображений.");
+
         if (options.ExportEdf && (!_hasEeg || options.Mode != MultiExportMode.SeparateFiles))
             throw new InvalidOperationException("EDF доступен только в режиме «Отдельные файлы» и только если в эксперименте есть ЭЭГ.");
 
@@ -197,6 +200,12 @@ public sealed class MultiExportService
                 ExportAoiJson(options, now, results[0], st);
             }
 
+            if (options.ExportGazeImage)
+                ExportPrebuiltImageForStimulus(options, now, results, st, "gaze", report);
+
+            if (options.ExportHeatImage)
+                ExportPrebuiltImageForStimulus(options, now, results, st, "heat", report);
+
             // EDF по плану не пишем
         }
     }
@@ -248,20 +257,8 @@ public sealed class MultiExportService
         if (options.ExportAoi)
             ExportAoiJson_AllInOne(options, now, results, stimuli);
 
-        if (options.ExportGazeImage || options.ExportHeatImage)
-        {
-            foreach (var st in stimuli)
-            {
-                foreach (var rr in results)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    if (options.ExportGazeImage)
-                        ExportPrebuiltImageIfExists(options, now, rr, st, "gaze", report);
-                    if (options.ExportHeatImage)
-                        ExportPrebuiltImageIfExists(options, now, rr, st, "heat", report);
-                }
-            }
-        }
+        if (options.ExportActions)
+            ExportActionsCsv_AllInOne(options, now, results, stimuli);
     }
 
     // ===== Source (копирование бинарников устройств) =====
@@ -589,6 +586,52 @@ public sealed class MultiExportService
         }
     }
 
+    private void ExportActionsCsv_AllInOne(
+        MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, IReadOnlyList<StimulFile> stimuli)
+    {
+        if (string.IsNullOrWhiteSpace(_mouseKbdUid)) return;
+
+        var name = BuildFileName(options, now, results[0], stimuli[0], "actions_all", "csv");
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        using var sw = new StreamWriter(dst);
+        sw.WriteLine("result_uid;stimul_uid;time_sec;mouse_button;keyboard_code;x;y");
+
+        Span<byte> buf = stackalloc byte[MkRecordSize];
+
+        foreach (var rr in results)
+        {
+            foreach (var st in stimuli)
+            {
+                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
+                if (!File.Exists(src)) continue;
+
+                using var fs = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+                while (true)
+                {
+                    int n = fs.Read(buf);
+                    if (n == 0) break;
+                    if (n != MkRecordSize) break;
+
+                    double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
+                    uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
+                    uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
+                    double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
+                    double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
+
+                    sw.Write(rr.Uid); sw.Write(';');
+                    sw.Write(st.Uid); sw.Write(';');
+                    sw.Write(time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+                    sw.Write(mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+                    sw.Write(key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+                    sw.Write(x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+                    sw.WriteLine(y.ToString(CultureInfo.InvariantCulture));
+                }
+            }
+        }
+    }
+
     // ===== AOI (json) =====
 
     private void ExportAoiJson(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
@@ -703,6 +746,40 @@ public sealed class MultiExportService
 
         File.Copy(src, dst, overwrite: true);
         report($"Изображение скопировано: {Path.GetFileName(dst)}");
+    }
+
+    private void ExportPrebuiltImageForStimulus(
+        MultiExportOptions options,
+        DateTime now,
+        IReadOnlyList<MultiExportResult> results,
+        StimulFile st,
+        string kind,
+        Action<string> report)
+    {
+        foreach (var rr in results)
+        {
+            // reuse pair-based lookup, но копируем только один раз для стимула
+            var dir = Path.Combine(_resultsDir, rr.Uid, st.Uid);
+            if (!Directory.Exists(dir)) continue;
+
+            var candidates = new[]
+            {
+                Path.Combine(dir, $"{kind}.png"),
+                Path.Combine(dir, $"{kind}.jpg"),
+                Path.Combine(dir, $"{kind}.jpeg"),
+            };
+
+            var src = candidates.FirstOrDefault(File.Exists);
+            if (src == null) continue;
+
+            var ext = Path.GetExtension(src).TrimStart('.');
+            var name = BuildFileName(options, now, rr, st, kind + "_image", ext);
+            var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+            File.Copy(src, dst, overwrite: true);
+            report($"Изображение скопировано: {Path.GetFileName(dst)}");
+            return;
+        }
     }
 
     // ===== EDF (пока только копируем, если уже есть) =====

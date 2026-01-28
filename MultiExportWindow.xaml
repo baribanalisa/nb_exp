@@ -4,7 +4,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:NeuroBureau.Experiment"
         Title="Мультиэкспорт"
-        Width="1100" Height="720"
+        Width="1100" Height="750"
         Background="#F9FAFB"
         FontFamily="Segoe UI"
         UseLayoutRounding="True"
@@ -95,7 +95,6 @@
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="bd" Property="Opacity" Value="0.55"/>
-                                <Setter Property="Cursor" Value="Arrow"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -105,11 +104,10 @@
 
         <!-- Кнопка primary -->
         <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Padding" Value="14,8"/>
             <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Setter Property="Template">
@@ -117,8 +115,6 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="bd"
                                 Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="10"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter Margin="{TemplateBinding Padding}"
@@ -129,215 +125,102 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{StaticResource PrimaryHoverBrush}"/>
-                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource PrimaryHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{StaticResource PrimaryPressedBrush}"/>
-                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource PrimaryPressedBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="bd" Property="Opacity" Value="0.55"/>
-                                <Setter Property="Cursor" Value="Arrow"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-        </Style>
-
-        <!-- Поля ввода -->
-        <Style TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="BorderBrush" Value="#D1D5DB"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="10,6"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="bd"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="10"
-                                SnapsToDevicePixels="True">
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="0"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="bd" Property="Opacity" Value="0.55"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="ComboBox">
-            <Setter Property="Padding" Value="8,4"/>
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-        </Style>
-
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-        </Style>
-
-        <!-- DataGrid -->
-        <Style TargetType="DataGrid">
-            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="GridLinesVisibility" Value="None"/>
-            <Setter Property="RowBackground" Value="{StaticResource SurfaceBrush}"/>
-            <Setter Property="AlternatingRowBackground" Value="#F9FAFB"/>
-            <Setter Property="HeadersVisibility" Value="Column"/>
-            <Setter Property="CanUserResizeRows" Value="False"/>
-            <Setter Property="RowHeaderWidth" Value="0"/>
-            <Setter Property="SelectionMode" Value="Extended"/>
-            <Setter Property="SelectionUnit" Value="FullRow"/>
-        </Style>
-
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F3F4F6"/>
-            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderColorBrush}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="Padding" Value="10,0"/>
-        </Style>
-
-        <Style TargetType="DataGridRow">
-            <Setter Property="MinHeight" Value="34"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderColorBrush}"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
         </Style>
     </Window.Resources>
 
-    <Grid Margin="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*" />
-            <ColumnDefinition Width="3*" />
-        </Grid.ColumnDefinitions>
-
-        <!-- Stimuli -->
-        <Border Grid.Row="0" Grid.Column="0" Margin="0,0,12,12" Style="{StaticResource CardBorderStyle}">
-            <DockPanel LastChildFill="True">
-                <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock Text="Стимулы (изображения)" Style="{StaticResource SectionTitleStyle}" />
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Выбрать все"
-                                Style="{StaticResource SecondaryButtonStyle}"
-                                Click="SelectAllStimuli_Click"
-                                Margin="0,0,8,0"/>
-                        <Button Content="Снять все"
-                                Style="{StaticResource SecondaryButtonStyle}"
-                                Click="ClearAllStimuli_Click"/>
-                    </StackPanel>
-                </Grid>
-
-                <Border Background="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource BorderColorBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Padding="6">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{Binding Stimuli}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border CornerRadius="10" Padding="8,6" Margin="2">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="Transparent"/>
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#F3F4F6"/>
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                            Content="{Binding DisplayName, Converter={StaticResource StimulusDisplayNameConverter}}"/>
-
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Border>
-            </DockPanel>
-        </Border>
-
-        <!-- Results -->
-        <Border Grid.Row="0" Grid.Column="1" Margin="0,0,0,12" Style="{StaticResource CardBorderStyle}">
-            <DockPanel LastChildFill="True">
-                <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock Text="Результаты" Style="{StaticResource SectionTitleStyle}" />
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="Выбрать все"
-                                Style="{StaticResource SecondaryButtonStyle}"
-                                Click="SelectAllResults_Click"
-                                Margin="0,0,8,0"/>
-                        <Button Content="Снять все"
-                                Style="{StaticResource SecondaryButtonStyle}"
-                                Click="ClearAllResults_Click"/>
-                    </StackPanel>
-                </Grid>
-
-                <Border Background="{StaticResource SurfaceBrush}"
-                        BorderBrush="{StaticResource BorderColorBrush}"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Padding="0"
-                        SnapsToDevicePixels="True">
-                    <DataGrid ItemsSource="{Binding Results}"
-                              AutoGenerateColumns="False"
-                              CanUserAddRows="False"
-                              HeadersVisibility="Column"
-                              IsReadOnly="True">
-                    <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="" Width="42">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <DataGridTextColumn Header="Дата" Binding="{Binding StartTimeText}" Width="*" />
-                        <DataGridTextColumn Header="Длительность (с)" Binding="{Binding DurationSec}" Width="140" />
-                    </DataGrid.Columns>
-
-                    </DataGrid>
-                </Border>
-            </DockPanel>
-        </Border>
-
-        <!-- Bottom settings -->
-        <Border Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource CardBorderStyle}">
-            <Grid>
+    <Grid Margin="18">
+        <Border Style="{StaticResource CardBorderStyle}">
+            <Grid Margin="4">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Заголовок -->
+                <TextBlock Text="Мультиэкспорт" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,14"/>
+
+                <!-- Основная панель: списки стимулов и результатов -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="14"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Панель стимулов -->
+                    <Border Style="{StaticResource CardBorderStyle}">
+                        <DockPanel>
+                            <Grid DockPanel.Dock="Top">
+                                <TextBlock Text="Стимулы" Style="{StaticResource SectionTitleStyle}"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="Выбрать все" Padding="8,4" Margin="0,0,8,0" Click="SelectAllStimuli_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                    <Button Content="Снять" Padding="8,4" Click="ClearAllStimuli_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource BorderColorBrush}" Margin="0,10,0,0"/>
+
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                                <ItemsControl ItemsSource="{Binding Stimuli}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,0,6">
+                                                <TextBlock Text="{Binding Stimulus, Converter={StaticResource StimulusDisplayNameConverter}}"
+                                                           Foreground="{StaticResource TextBrush}"/>
+                                            </CheckBox>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Панель результатов -->
+                    <Border Grid.Column="2" Style="{StaticResource CardBorderStyle}">
+                        <DockPanel>
+                            <Grid DockPanel.Dock="Top">
+                                <TextBlock Text="Результаты" Style="{StaticResource SectionTitleStyle}"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="Выбрать все" Padding="8,4" Margin="0,0,8,0" Click="SelectAllResults_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                    <Button Content="Снять" Padding="8,4" Click="ClearAllResults_Click" Style="{StaticResource SecondaryButtonStyle}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Border DockPanel.Dock="Top" Height="1" Background="{StaticResource BorderColorBrush}" Margin="0,10,0,0"/>
+
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                                <ItemsControl ItemsSource="{Binding Results}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsSelected}" Margin="0,0,0,6">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Result.Name}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold"/>
+                                                    <TextBlock Text="{Binding Uid}" Foreground="{StaticResource MutedTextBrush}" FontSize="11"/>
+                                                </StackPanel>
+                                            </CheckBox>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Нижняя панель: настройки экспорта -->
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -388,43 +271,28 @@
 
                 <TextBlock Grid.Row="2" Text="Режим" Style="{StaticResource FormLabelStyle}" Margin="0,10,0,0"/>
 
-                <!-- один “современный” инпут без внутренней рамки ComboBox -->
-                                <Border Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
-                        Margin="0,10,0,0"
-                        CornerRadius="10"
-                        BorderBrush="#D1D5DB"
+                <Border Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                        Background="White"
+                        BorderBrush="{StaticResource BorderColorBrush}"
                         BorderThickness="1"
-                        Background="{StaticResource SurfaceBrush}">
-                    <ComboBox Margin="10,4"
-                              HorizontalAlignment="Stretch"
-                              VerticalContentAlignment="Center"
-                              Background="{StaticResource SurfaceBrush}"
-                              Foreground="{StaticResource TextBrush}"
+                        CornerRadius="8"
+                        Height="38">
+                    <ComboBox SelectedValue="{Binding Mode}"
                               BorderThickness="0"
-                              ItemsSource="{Binding Modes}"
-                              SelectedItem="{Binding Mode}">
+                              Background="Transparent"
+                              Padding="10,8"
+                              VerticalContentAlignment="Center"
+                              ItemsSource="{Binding Modes}">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Converter={StaticResource MultiExportModeDisplayConverter}}"/>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
-
-                        <!-- Принудительно делаем внутренности ComboBox светлыми (включая Popup) -->
                         <ComboBox.Resources>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#FFFFFF"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#FFFFFF"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlLightBrushKey}" Color="#FFFFFF"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#111827"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#6B7280"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#E5E7EB"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#111827"/>
-
                             <Style TargetType="ComboBoxItem">
-                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-                                <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-                                <Setter Property="Padding" Value="10,6"/>
+                                <Setter Property="Padding" Value="10,8"/>
                                 <Style.Triggers>
-                                    <Trigger Property="IsHighlighted" Value="True">
+                                    <Trigger Property="IsMouseOver" Value="True">
                                         <Setter Property="Background" Value="#F3F4F6"/>
                                     </Trigger>
                                     <Trigger Property="IsSelected" Value="True">
@@ -436,9 +304,66 @@
                     </ComboBox>
                 </Border>
 
+                <!-- Форматы экспорта -->
+                <TextBlock Grid.Row="3" Text="Формат данных" Style="{StaticResource FormLabelStyle}" Margin="0,10,0,0"/>
+                <Border Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                        Background="White"
+                        BorderBrush="{StaticResource BorderColorBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Height="38">
+                    <ComboBox SelectedValue="{Binding DataFormat}"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              Padding="10,8"
+                              VerticalContentAlignment="Center"
+                              ItemsSource="{Binding DataFormats}">
+                        <ComboBox.Resources>
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="Padding" Value="10,8"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#F3F4F6"/>
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Resources>
+                    </ComboBox>
+                </Border>
 
+                <TextBlock Grid.Row="4" Text="Формат изображений" Style="{StaticResource FormLabelStyle}" Margin="0,10,0,0"/>
+                <Border Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,10,0,0"
+                        Background="White"
+                        BorderBrush="{StaticResource BorderColorBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Height="38">
+                    <ComboBox SelectedValue="{Binding ImageFormat}"
+                              BorderThickness="0"
+                              Background="Transparent"
+                              Padding="10,8"
+                              VerticalContentAlignment="Center"
+                              ItemsSource="{Binding ImageFormats}">
+                        <ComboBox.Resources>
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="Padding" Value="10,8"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#F3F4F6"/>
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#E5E7EB"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Resources>
+                    </ComboBox>
+                </Border>
 
-                <Grid Grid.Row="3" Grid.ColumnSpan="3" Margin="0,14,0,0">
+                <Grid Grid.Row="5" Grid.ColumnSpan="3" Margin="0,14,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -446,12 +371,11 @@
 
                     <WrapPanel Grid.Column="0" VerticalAlignment="Center">
                         <CheckBox Content="Исходные данные (bin)" IsChecked="{Binding ExportSource}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Сырые данные взгляда (CSV)" IsChecked="{Binding ExportRaw}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Действия (CSV)" IsChecked="{Binding ExportActions}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Сырые данные взгляда" IsChecked="{Binding ExportRaw}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Действия" IsChecked="{Binding ExportActions}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
                         <CheckBox Content="Области интереса (JSON)" IsChecked="{Binding ExportAoi}" Margin="0,0,14,10"/>
                         <CheckBox Content="Изображение взгляда" IsChecked="{Binding ExportGazeImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
                         <CheckBox Content="Изображение тепловой карты" IsChecked="{Binding ExportHeatImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
-                        <CheckBox Content="EDF" IsChecked="{Binding ExportEdf}" IsEnabled="{Binding CanExportEdf}" Margin="0,0,14,10"/>
                     </WrapPanel>
 
                     <Button Grid.Column="1"
@@ -463,7 +387,7 @@
                             IsEnabled="{Binding CanStartExport}"/>
                 </Grid>
 
-                <TextBlock Grid.Row="4" Grid.ColumnSpan="3" Margin="0,10,0,0"
+                <TextBlock Grid.Row="6" Grid.ColumnSpan="3" Margin="0,10,0,0"
                            Foreground="{StaticResource TextBrush}"
                            Text="{Binding StatusText}"/>
             </Grid>

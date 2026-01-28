@@ -13,5 +13,8 @@ public sealed class MultiExportOptions
     public bool ExportAoi { get; init; }
     public bool ExportGazeImage { get; init; }
     public bool ExportHeatImage { get; init; }
-    public bool ExportEdf { get; init; }
+
+    // Форматы экспорта
+    public DataExportFormat DataFormat { get; init; } = DataExportFormat.CSV;
+    public ImageExportFormat ImageFormat { get; init; } = ImageExportFormat.PNG;
 }

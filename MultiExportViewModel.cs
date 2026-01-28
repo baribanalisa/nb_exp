@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -28,6 +27,8 @@ public sealed class MultiExportViewModel : ObservableObject
     public ObservableCollection<MultiExportResultItem> Results { get; } = new();
 
     public Array Modes { get; } = Enum.GetValues(typeof(MultiExportMode));
+    public Array DataFormats { get; } = Enum.GetValues(typeof(DataExportFormat));
+    public Array ImageFormats { get; } = Enum.GetValues(typeof(ImageExportFormat));
 
     private string _outputDir = "";
     public string OutputDir
@@ -87,11 +88,24 @@ public sealed class MultiExportViewModel : ObservableObject
             {
                 ApplyConstraints();
                 OnPropertyChanged(nameof(CanExportImages));
-                OnPropertyChanged(nameof(CanExportEdf));
                 OnPropertyChanged(nameof(CanExportRawOrSource));
                 OnPropertyChanged(nameof(CanStartExport));
             }
         }
+    }
+
+    private DataExportFormat _dataFormat = DataExportFormat.CSV;
+    public DataExportFormat DataFormat
+    {
+        get => _dataFormat;
+        set => SetProperty(ref _dataFormat, value);
+    }
+
+    private ImageExportFormat _imageFormat = ImageExportFormat.PNG;
+    public ImageExportFormat ImageFormat
+    {
+        get => _imageFormat;
+        set => SetProperty(ref _imageFormat, value);
     }
 
     private bool _exportSource = true;
@@ -112,25 +126,7 @@ public sealed class MultiExportViewModel : ObservableObject
     private bool _exportHeatImage;
     public bool ExportHeatImage { get => _exportHeatImage; set { if (SetProperty(ref _exportHeatImage, value)) OnPropertyChanged(nameof(CanStartExport)); } }
 
-    private bool _exportEdf;
-    public bool ExportEdf { get => _exportEdf; set { if (SetProperty(ref _exportEdf, value)) OnPropertyChanged(nameof(CanStartExport)); } }
-
-    private bool _hasEeg;
-    public bool HasEeg
-    {
-        get => _hasEeg;
-        private set
-        {
-            if (SetProperty(ref _hasEeg, value))
-            {
-                OnPropertyChanged(nameof(CanExportEdf));
-                ApplyConstraints();
-            }
-        }
-    }
-
     public bool CanExportImages => Mode is MultiExportMode.SeparateFiles or MultiExportMode.FilePerStimul;
-    public bool CanExportEdf => HasEeg && Mode == MultiExportMode.SeparateFiles;
     public bool CanExportRawOrSource => Mode != MultiExportMode.AllInOne;
 
     private bool _isBusy;
@@ -154,7 +150,7 @@ public sealed class MultiExportViewModel : ObservableObject
         && Directory.Exists(OutputDir)
         && Stimuli.Any(s => s.IsSelected)
         && Results.Any(r => r.IsSelected)
-        && (ExportAoi || ExportActions || ExportRaw || ExportSource || ExportGazeImage || ExportHeatImage || ExportEdf);
+        && (ExportAoi || ExportActions || ExportRaw || ExportSource || ExportGazeImage || ExportHeatImage);
 
     public MultiExportViewModel(string expDir, IReadOnlyCollection<string> initialSelectedResultUids)
     {
@@ -183,7 +179,9 @@ public sealed class MultiExportViewModel : ObservableObject
         ExportAoi = cfg.ExportAoi;
         ExportGazeImage = cfg.ExportGazeImage;
         ExportHeatImage = cfg.ExportHeatImage;
-        ExportEdf = cfg.ExportEdf;
+
+        DataFormat = cfg.DataFormat;
+        ImageFormat = cfg.ImageFormat;
 
         // exp.json
         var expPath = Path.Combine(ExpDir, "exp.json");
@@ -196,9 +194,6 @@ public sealed class MultiExportViewModel : ObservableObject
             return JsonSerializer.Deserialize<ExperimentFile>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                    ?? throw new InvalidOperationException("Не удалось распарсить exp.json");
         });
-
-        HasEeg = (Experiment.Devices ?? new List<DeviceFile>())
-            .Any(d => (d.DevType ?? "").IndexOf("eeg", StringComparison.OrdinalIgnoreCase) >= 0);
 
         LoadStimuli();
         LoadResults();
@@ -245,7 +240,9 @@ public sealed class MultiExportViewModel : ObservableObject
             ExportAoi = ExportAoi,
             ExportGazeImage = ExportGazeImage,
             ExportHeatImage = ExportHeatImage,
-            ExportEdf = ExportEdf
+
+            DataFormat = DataFormat,
+            ImageFormat = ImageFormat
         };
     }
 
@@ -263,7 +260,9 @@ public sealed class MultiExportViewModel : ObservableObject
             ExportAoi = ExportAoi,
             ExportGazeImage = ExportGazeImage,
             ExportHeatImage = ExportHeatImage,
-            ExportEdf = ExportEdf
+
+            DataFormat = DataFormat,
+            ImageFormat = ImageFormat
         };
     }
 
@@ -293,10 +292,6 @@ public sealed class MultiExportViewModel : ObservableObject
             ExportGazeImage = false;
             ExportHeatImage = false;
         }
-
-        // EDF — только SeparateFiles + EEG
-        if (!CanExportEdf)
-            ExportEdf = false;
 
         // Raw/Source запрещены в AllInOne
         if (!CanExportRawOrSource)
