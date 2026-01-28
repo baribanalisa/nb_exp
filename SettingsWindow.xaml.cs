@@ -34,6 +34,7 @@ public partial class SettingsWindow : Window
     public int WriteDesktop => _writeDesktop;
     private bool _recordAudio;
     private string? _audioDeviceName;
+    private readonly bool _allowFfmpegFromPath;
 
     public bool RecordAudio => _recordAudio;
     public string? AudioDeviceName => _audioDeviceName;
@@ -54,7 +55,8 @@ public partial class SettingsWindow : Window
     bool recordCamera,
     string? cameraDeviceName,
     bool recordAudio,
-    string? audioDeviceName)
+    string? audioDeviceName,
+    bool allowFfmpegFromPath)
     {
         InitializeComponent();
 
@@ -69,6 +71,7 @@ public partial class SettingsWindow : Window
 
         _recordAudio = recordAudio;
         _audioDeviceName = audioDeviceName;
+        _allowFfmpegFromPath = allowFfmpegFromPath;
 
         RecordDesktopCheck.IsChecked = _recordDesktop;
         RecordCameraCheck.IsChecked = _recordCamera;
@@ -120,10 +123,10 @@ public partial class SettingsWindow : Window
     {
         CameraCombo.IsEnabled = _recordCamera;
 
-        var ffmpeg = CameraDeviceProvider.FindFfmpegExe();
+        var ffmpeg = CameraDeviceProvider.FindFfmpegExe(_allowFfmpegFromPath);
         if (string.IsNullOrWhiteSpace(ffmpeg))
         {
-            CameraHintText.Text = "ffmpeg не найден. Положи ffmpeg.exe рядом с приложением или добавь в PATH.";
+            CameraHintText.Text = "ffmpeg не найден. Нужен локальный ffmpeg.exe рядом с приложением (ffmpeg.exe или ffmpeg\\ffmpeg.exe).";
             CameraHintText.Visibility = Visibility.Visible;
 
             _recordCamera = false;
@@ -147,14 +150,26 @@ public partial class SettingsWindow : Window
 
         CameraCombo.ItemsSource = devices;
 
-        if (!string.IsNullOrWhiteSpace(_cameraDeviceName) && devices.Contains(_cameraDeviceName))
-            CameraCombo.SelectedItem = _cameraDeviceName;
+        if (!string.IsNullOrWhiteSpace(_cameraDeviceName))
+        {
+            var selected = devices.FirstOrDefault(d =>
+                string.Equals(d.FriendlyName, _cameraDeviceName, StringComparison.OrdinalIgnoreCase))
+                ?? devices.FirstOrDefault(d =>
+                    string.Equals(d.AlternativeName, _cameraDeviceName, StringComparison.OrdinalIgnoreCase));
+
+            if (selected != null)
+                CameraCombo.SelectedItem = selected;
+            else
+                CameraCombo.SelectedIndex = 0;
+        }
         else
+        {
             CameraCombo.SelectedIndex = 0;
+        }
 
         CameraCombo.SelectionChanged += (_, _) =>
         {
-            _cameraDeviceName = CameraCombo.SelectedItem as string;
+            _cameraDeviceName = (CameraCombo.SelectedItem as CameraDeviceInfo)?.FriendlyName;
         };
         var aud = await CameraDeviceProvider.GetAudioDevicesAsync(ffmpeg);
         if (aud.Count == 0)

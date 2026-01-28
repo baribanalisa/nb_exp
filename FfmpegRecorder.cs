@@ -52,21 +52,69 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
         string outputPath,
         bool recordAudio,
         string? audioDeviceName,
-        int fps = 30)
+        string? framerate = null,
+        string? inputFormat = null,
+        string? videoSize = null,
+        string? rtbufsize = null)
+
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
         var cam = (cameraDeviceName ?? "").Replace("\"", "").Trim();
         var mic = (audioDeviceName ?? "").Replace("\"", "").Trim();
 
+        var fps = string.IsNullOrWhiteSpace(framerate) ? "30" : framerate.Trim();
+        var format = string.IsNullOrWhiteSpace(inputFormat) ? null : inputFormat.Trim();
+        var size = string.IsNullOrWhiteSpace(videoSize) ? null : videoSize.Trim();
+        var rtbuf = string.IsNullOrWhiteSpace(rtbufsize) ? "256M" : rtbufsize.Trim();
+
+
         // ВАЖНО: делаем ровно как в PowerShell: один dshow input video:audio
+        var inputSpec = (recordAudio && !string.IsNullOrWhiteSpace(mic))
+            ? $"video=\"{cam}\":audio=\"{mic}\""
+            : $"video=\"{cam}\"";
+
+        var inputFormatArg = string.IsNullOrWhiteSpace(format) ? "" : $"-input_format {format} ";
+        var videoSizeArg = string.IsNullOrWhiteSpace(size) ? "" : $"-video_size {size} ";
+
+        var args =
+            $"-y -hide_banner -loglevel error " +
+            $"-f dshow -rtbufsize {rtbuf} -framerate {fps} {inputFormatArg}{videoSizeArg}-i {inputSpec} " +
+            $"-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p " +
+            (recordAudio && !string.IsNullOrWhiteSpace(mic)
+                ? "-c:a aac -b:a 128k -ar 48000 -ac 2 -shortest "
+                : "") +
+            $"\"{outputPath}\"";
+
+        return await StartAsync(ffmpegExe, args, "записи камеры").ConfigureAwait(false);
+    }
+
+    public static async Task<FfmpegRecorder> StartCameraAsync(
+        string ffmpegExe,
+        string cameraDeviceName,
+        string outputPath,
+        bool recordAudio,
+        string? audioDeviceName,
+        CameraProfile profile)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+
+        var cam = (cameraDeviceName ?? "").Replace("\"", "").Trim();
+        var mic = (audioDeviceName ?? "").Replace("\"", "").Trim();
+
         var inputSpec = (recordAudio && !string.IsNullOrWhiteSpace(mic))
             ? $"video=\"{cam}\":audio=\"{mic}\""
             : $"video=\"{cam}\"";
 
         var args =
             $"-y -hide_banner -loglevel error " +
-            $"-f dshow -rtbufsize 256M -framerate {fps} -i {inputSpec} " +
+            $"-f dshow -rtbufsize 256M " +
+
+            $"-video_size {profile.Width}x{profile.Height} " +
+            $"-framerate {profile.FrameRate} " +
+            $"-input_format {profile.InputFormat} " +
+            $"-i {inputSpec} " +
+
             $"-c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p " +
             (recordAudio && !string.IsNullOrWhiteSpace(mic)
                 ? "-c:a aac -b:a 128k -ar 48000 -ac 2 -shortest "

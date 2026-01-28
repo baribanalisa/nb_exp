@@ -73,6 +73,7 @@ public partial class MainWindow : Window
     private string? _cameraDeviceName;
     private bool _recordAudio;
     private string? _audioDeviceName;
+    private bool _allowFfmpegFromPath;
 
     private Task? _activeRunTask; // чтобы при закрытии дождаться завершения и закрытия файлов
     private HwndSource? _hwndSource;
@@ -189,7 +190,8 @@ public partial class MainWindow : Window
         _recordCamera,
         _cameraDeviceName,
         _recordAudio,          // ✅ ДОБАВИЛИ
-        _audioDeviceName       // ✅ ДОБАВИЛИ
+        _audioDeviceName,      // ✅ ДОБАВИЛИ
+        _allowFfmpegFromPath
     )
         { Owner = this };
 
@@ -834,6 +836,7 @@ public partial class MainWindow : Window
         _cameraDeviceName = cfg.CameraDeviceName;
         _recordAudio = cfg.RecordAudio;
         _audioDeviceName = cfg.AudioDeviceName;
+        _allowFfmpegFromPath = cfg.AllowFfmpegFromPath;
 
         _writeDesktop = cfg.WriteDesktop;
 
@@ -1510,12 +1513,12 @@ public partial class MainWindow : Window
 
         if (needFfmpeg)
         {
-            ffmpegExe = CameraDeviceProvider.FindFfmpegExe();
+            ffmpegExe = CameraDeviceProvider.FindFfmpegExe(_allowFfmpegFromPath);
             if (string.IsNullOrWhiteSpace(ffmpegExe))
             {
                 MessageBox.Show(
                     "Для записи (включена запись экрана/камеры и/или есть стимулы записи экрана) требуется ffmpeg, но он не найден.\n" +
-                    "Положи ffmpeg.exe рядом с приложением или добавь в PATH.\n" +
+                    "Нужен локальный ffmpeg.exe рядом с приложением (ffmpeg.exe или ffmpeg\\ffmpeg.exe).\n" +
                     "Запись будет пропущена.",
                     "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
 
@@ -1558,6 +1561,20 @@ public partial class MainWindow : Window
                         try
                         {
                             var camOut = Path.Combine(resultDir, "camera.mkv");
+                            CameraProfile? cameraProfile = null;
+
+                            if (!string.IsNullOrWhiteSpace(ffmpegExe))
+                            {
+                                var devices = await CameraDeviceProvider.GetVideoDevicesAsync(ffmpegExe);
+                                var selectedDevice = devices.FirstOrDefault(d =>
+                                        string.Equals(d.FriendlyName, _cameraDeviceName, StringComparison.OrdinalIgnoreCase))
+                                    ?? devices.FirstOrDefault(d =>
+                                        string.Equals(d.AlternativeName, _cameraDeviceName, StringComparison.OrdinalIgnoreCase));
+
+                                var deviceId = selectedDevice?.AlternativeName ?? selectedDevice?.FriendlyName;
+                                if (!string.IsNullOrWhiteSpace(deviceId))
+                                    cameraProfile = AppConfigManager.LoadCameraProfile(deviceId);
+                            }
 
                             camRec = await FfmpegRecorder.StartCameraAsync(
                                 ffmpegExe: ffmpegExe!,
@@ -1565,7 +1582,10 @@ public partial class MainWindow : Window
                                 outputPath: camOut,
                                 recordAudio: _recordAudio,                // чекбокс “звук”
                                 audioDeviceName: _audioDeviceName,        // выбранный микрофон
-                                fps: 30
+                                framerate: cameraProfile?.Framerate,
+                                inputFormat: cameraProfile?.InputFormat,
+                                videoSize: cameraProfile?.VideoSize,
+                                rtbufsize: cameraProfile?.Rtbufsize
                             );
                         }
                         catch (Exception ex)
@@ -1845,6 +1865,7 @@ public partial class MainWindow : Window
                             screenRecordFfmpegWarned = true;
                             MessageBox.Show(
                                 "Стимул записи экрана (SCREEN_RECORD) требует ffmpeg, но ffmpeg не найден.\n" +
+                                "Нужен локальный ffmpeg.exe рядом с приложением (ffmpeg.exe или ffmpeg\\ffmpeg.exe).\n" +
                                 "Запись этого стимула будет пропущена.",
                                 "Запись", MessageBoxButton.OK, MessageBoxImage.Warning);
                         }

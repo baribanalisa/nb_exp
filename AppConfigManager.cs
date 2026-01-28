@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -24,7 +25,8 @@ public sealed record AppConfig(
     string? CameraDeviceName,
 
     int AudioMode,
-    string? AudioDeviceName
+    string? AudioDeviceName,
+    bool AllowFfmpegFromPath
 )
 {
     public bool RecordDesktop => (DesktopMode & Streamer.RECORD) != 0;
@@ -47,12 +49,12 @@ public static class AppConfigManager
         var exitDef = new Hotkey(ModifierKeys.None, Key.Escape);
 
         if (!File.Exists(cfgPath))
-            return new AppConfig(defaultRoot, nextDef, exitDef, -1, 0, 0, null, 0, null);
+            return new AppConfig(defaultRoot, nextDef, exitDef, -1, 0, 0, null, 0, null, false);
 
         try
         {
             var obj = JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject;
-            if (obj == null) return new AppConfig(defaultRoot, nextDef, exitDef, -1, 0, 0, null, 0, null);
+            if (obj == null) return new AppConfig(defaultRoot, nextDef, exitDef, -1, 0, 0, null, 0, null, false);
 
             var root = ((string?)obj["exp-path"] ?? (string?)obj["exp_path"] ?? defaultRoot).Trim();
 
@@ -75,20 +77,23 @@ public static class AppConfigManager
             // читаем строго из config.*
             var cfgObj = obj["config"] as JsonObject;
 
+            // config.ffmpeg-allow-path (bool, default false) — разрешить искать ffmpeg в PATH, если рядом нет ffmpeg.exe
             int desktopMode = ReadInt(cfgObj?["desktop"], 0);
             int cameraMode = ReadInt(cfgObj?["camera"], 0);
             int audioMode = ReadInt(cfgObj?["audio"], 0);
 
             string? cameraDeviceName = (string?)cfgObj?["camera_device"];
             string? audioDeviceName = (string?)cfgObj?["audio_device"];
+            bool allowFfmpegFromPath =
+                ReadBool(cfgObj?["ffmpeg-allow-path"] ?? cfgObj?["ffmpeg_allow_path"], false);
 
             return new AppConfig(root, next, exit, writeDesktop,
                 desktopMode, cameraMode, cameraDeviceName,
-                audioMode, audioDeviceName);
+                audioMode, audioDeviceName, allowFfmpegFromPath);
         }
         catch
         {
-            return new AppConfig(defaultRoot, nextDef, exitDef, -1, 0, 0, null, 0, null);
+            return new AppConfig(defaultRoot, nextDef, exitDef, -1, 0, 0, null, 0, null, false);
         }
     }
 
@@ -211,6 +216,88 @@ public static class AppConfigManager
             cfgObj["audio_device"] = audioDeviceName;
         else
             cfgObj.Remove("audio_device");
+
+        File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    public static IReadOnlyDictionary<string, CameraProfile> LoadCameraProfiles()
+    {
+        var cfgPath = FindConfigPath();
+        if (!File.Exists(cfgPath)) return new Dictionary<string, CameraProfile>();
+
+        try
+        {
+            var obj = JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject;
+            var cfgObj = obj?["config"] as JsonObject;
+            var profilesObj = cfgObj?["camera_profiles"] as JsonObject;
+            if (profilesObj == null) return new Dictionary<string, CameraProfile>();
+
+            var result = new Dictionary<string, CameraProfile>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in profilesObj)
+            {
+                if (entry.Value == null) continue;
+                var profile = entry.Value.Deserialize<CameraProfile>();
+                if (profile == null) continue;
+
+                if (string.IsNullOrWhiteSpace(profile.DeviceId))
+                    profile.DeviceId = entry.Key;
+
+                if (!string.IsNullOrWhiteSpace(profile.DeviceId))
+                    result[profile.DeviceId] = profile;
+            }
+
+            return result;
+        }
+        catch
+        {
+            return new Dictionary<string, CameraProfile>();
+        }
+    }
+
+    public static CameraProfile? LoadCameraProfile(string deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId)) return null;
+        var profiles = LoadCameraProfiles();
+        return profiles.TryGetValue(deviceId, out var profile) ? profile : null;
+    }
+
+    public static void SaveCameraProfile(CameraProfile profile)
+    {
+        if (profile == null) throw new ArgumentNullException(nameof(profile));
+        if (string.IsNullOrWhiteSpace(profile.DeviceId))
+            throw new ArgumentException("DeviceId пустой.", nameof(profile));
+
+        var cfgPath = FindConfigPath();
+        var dir = Path.GetDirectoryName(cfgPath);
+        if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+
+        JsonObject rootObj;
+        try
+        {
+            rootObj = File.Exists(cfgPath)
+                ? (JsonNode.Parse(File.ReadAllText(cfgPath)) as JsonObject) ?? new JsonObject()
+                : new JsonObject();
+        }
+        catch
+        {
+            rootObj = new JsonObject();
+        }
+
+        var cfgObj = rootObj["config"] as JsonObject;
+        if (cfgObj == null)
+        {
+            cfgObj = new JsonObject();
+            rootObj["config"] = cfgObj;
+        }
+
+        var profilesObj = cfgObj["camera_profiles"] as JsonObject;
+        if (profilesObj == null)
+        {
+            profilesObj = new JsonObject();
+            cfgObj["camera_profiles"] = profilesObj;
+        }
+
+        profilesObj[profile.DeviceId] = JsonSerializer.SerializeToNode(profile);
 
         File.WriteAllText(cfgPath, rootObj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
@@ -476,4 +563,3 @@ public static void SaveMultiExportSettings(MultiExportSettings settings)
         return string.IsNullOrWhiteSpace(s) ? fallback : s;
     }
 }
-
