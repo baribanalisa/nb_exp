@@ -12,6 +12,7 @@ using Point = System.Windows.Point;
 using Pen = System.Windows.Media.Pen;
 using FontFamily = System.Windows.Media.FontFamily;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MessageBox = System.Windows.MessageBox;
 namespace NeuroBureau.Experiment;
 
 public partial class SettingsWindow : Window
