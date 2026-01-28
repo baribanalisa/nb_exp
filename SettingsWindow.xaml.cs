@@ -240,16 +240,25 @@ public partial class SettingsWindow : Window
         CheckCameraButton.IsEnabled = false;
         try
         {
-            var profile = await CameraProfileProbe.ProbeAsync(ffmpeg, _selectedCameraDevice);
-            AppConfigManager.SaveCameraProfile(profile);
-            MessageBox.Show(
-                $"Профиль камеры сохранён: {profile.ToDisplayString()}",
-                "Проверка камеры", MessageBoxButton.OK, MessageBoxImage.Information);
+            var cameraName = _selectedCameraDevice.FriendlyName;
+            var result = await CameraCheckHelper.CheckCameraAsync(ffmpeg, cameraName);
+            if (result.Success)
+            {
+                MessageBox.Show(
+                    $"Камера доступна: {cameraName}",
+                    "Проверка камеры", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show(
+                    $"Проверка камеры завершилась с предупреждением:\n\nКамера: {cameraName}\nСтатус: {result.Message}",
+                    "Проверка камеры", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
         catch (Exception ex)
         {
             MessageBox.Show(
-                "Не удалось подобрать рабочие параметры камеры.\n" + ex.Message,
+                "Не удалось проверить камеру.\n" + ex.Message,
                 "Проверка камеры", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
