@@ -74,7 +74,30 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
 
         var framerateValue = string.IsNullOrWhiteSpace(framerate) ? "30" : framerate.Trim();
         var framerateArg = string.IsNullOrWhiteSpace(framerateValue) ? "" : $"-framerate {framerateValue} ";
-        var inputFormatArg = string.IsNullOrWhiteSpace(inputFormat) ? "" : $"-input_format {inputFormat.Trim()} ";
+        
+        // ========================================================
+        // ИСПРАВЛЕНИЕ: НЕ используем -input_format напрямую!
+        // Вместо этого используем -pixel_format для raw форматов
+        // и -vcodec для сжатых (mjpeg)
+        // Или вообще не указываем формат (auto) - самый надёжный вариант
+        // ========================================================
+        string inputFormatArg;
+        if (string.IsNullOrWhiteSpace(inputFormat))
+        {
+            // Авто-режим: ffmpeg сам договорится с камерой
+            inputFormatArg = "";
+        }
+        else if (inputFormat.Trim().Equals("mjpeg", StringComparison.OrdinalIgnoreCase))
+        {
+            // Для mjpeg используем -vcodec (работает везде)
+            inputFormatArg = "-vcodec mjpeg ";
+        }
+        else
+        {
+            // Для raw форматов (yuyv422, nv12) используем -pixel_format
+            inputFormatArg = $"-pixel_format {inputFormat.Trim()} ";
+        }
+        
         var videoSizeArg = string.IsNullOrWhiteSpace(videoSize) ? "" : $"-video_size {videoSize.Trim()} ";
         var rtbufsizeValue = string.IsNullOrWhiteSpace(rtbufsize) ? "512M" : rtbufsize.Trim();
         var rtbufsizeArg = string.IsNullOrWhiteSpace(rtbufsizeValue) ? "" : $"-rtbufsize {rtbufsizeValue} ";
@@ -113,10 +136,10 @@ internal sealed class FfmpegRecorder : IAsyncDisposable
             {
                 Debug.WriteLine($"[FfmpegRecorder] Попытка 2 не удалась: {ex2.Message}");
 
-                // ========== Попытка 3: минимальные параметры ==========
+                // ========== Попытка 3: минимальные параметры (без формата и размера) ==========
                 var args3 =
                     $"-y -hide_banner -loglevel warning " +
-                    $"-f dshow -i {inputSpec} " +
+                    $"-f dshow -rtbufsize 512M -i {inputSpec} " +
                     $"-c:v libx264 -preset veryfast -crf 23 " +
                     audioParams +
                     $"\"{outputPath}\"";

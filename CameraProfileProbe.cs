@@ -6,9 +6,11 @@ using System.Threading.Tasks;
 
 namespace NeuroBureau.Experiment;
 
-internal sealed record CameraProfileCandidate(int Width, int Height, int FrameRate, string InputFormat)
+internal sealed record CameraProfileCandidate(int Width, int Height, int FrameRate, string? InputFormat)
 {
-    public override string ToString() => $"{Width}x{Height}@{FrameRate} ({InputFormat})";
+    public override string ToString() => InputFormat == null 
+        ? $"{Width}x{Height}@{FrameRate} (auto)" 
+        : $"{Width}x{Height}@{FrameRate} ({InputFormat})";
 }
 
 internal static class CameraProfileProbe
@@ -32,10 +34,34 @@ internal static class CameraProfileProbe
 
         foreach (var candidate in candidates)
         {
+            // ========================================================
+            // ИСПРАВЛЕНИЕ: НЕ используем -input_format напрямую!
+            // Вместо этого используем -pixel_format для raw форматов
+            // и -vcodec для сжатых (mjpeg)
+            // Или вообще не указываем формат (auto) - самый надёжный вариант
+            // ========================================================
+            
+            string formatArg;
+            if (string.IsNullOrEmpty(candidate.InputFormat))
+            {
+                // Авто-режим: ffmpeg сам договорится с камерой
+                formatArg = "";
+            }
+            else if (candidate.InputFormat == "mjpeg")
+            {
+                // Для mjpeg используем -vcodec (работает везде)
+                formatArg = "-vcodec mjpeg ";
+            }
+            else
+            {
+                // Для raw форматов (yuyv422, nv12) используем -pixel_format
+                formatArg = $"-pixel_format {candidate.InputFormat} ";
+            }
+
             var args =
                 $"-hide_banner -loglevel error " +
                 $"-f dshow -video_size {candidate.Width}x{candidate.Height} " +
-                $"-framerate {candidate.FrameRate} -input_format {candidate.InputFormat} " +
+                $"-framerate {candidate.FrameRate} {formatArg}" +
                 $"-i video=\"{cam}\" -t 2 -f null -";
 
             var result = await RunAsync(ffmpegExe, args).ConfigureAwait(false);
@@ -46,7 +72,7 @@ internal static class CameraProfileProbe
                         ? device.FriendlyName
                         : device.AlternativeName,
                     FriendlyName = device.FriendlyName,
-                    InputFormat = candidate.InputFormat,
+                    InputFormat = candidate.InputFormat ?? "", // пустая строка = авто
                     VideoSize = $"{candidate.Width}x{candidate.Height}",
                     Framerate = candidate.FrameRate.ToString()
                 };
@@ -59,7 +85,9 @@ internal static class CameraProfileProbe
         }
 
         var message = new StringBuilder();
+        message.AppendLine("Не удалось подобрать рабочие параметры камеры.");
         message.AppendLine("Не удалось подобрать рабочий профиль камеры.");
+        message.AppendLine();
         message.AppendLine("Список доступных опций ffmpeg dshow:");
         message.AppendLine(capabilities.Trim());
         message.AppendLine();
@@ -95,7 +123,10 @@ internal static class CameraProfileProbe
 
     private static List<CameraProfileCandidate> BuildCandidates()
     {
-        var formats = new[] { "mjpeg", "yuyv422", "nv12" };
+        // ИСПРАВЛЕНИЕ: Начинаем с авто-режима (null), потом mjpeg, потом raw форматы
+        // Авто-режим работает на всех версиях ffmpeg
+        var formats = new string?[] { null, "mjpeg", "yuyv422", "nv12" };
+        
         var resolutions = new (int width, int height, int fps)[]
         {
             (1280, 720, 30),
@@ -107,10 +138,21 @@ internal static class CameraProfileProbe
         };
 
         var list = new List<CameraProfileCandidate>();
+        
+        // Сначала пробуем авто-режим для всех разрешений
+        foreach (var (width, height, fps) in resolutions)
+        {
+            list.Add(new CameraProfileCandidate(width, height, fps, null)); // auto
+        }
+        
+        // Потом конкретные форматы (если авто не сработал)
         foreach (var (width, height, fps) in resolutions)
         {
             foreach (var format in formats)
-                list.Add(new CameraProfileCandidate(width, height, fps, format));
+            {
+                if (format != null) // авто уже добавлен выше
+                    list.Add(new CameraProfileCandidate(width, height, fps, format));
+            }
         }
 
         return list;
