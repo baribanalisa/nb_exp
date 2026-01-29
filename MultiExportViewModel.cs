@@ -88,7 +88,7 @@ public sealed class MultiExportViewModel : ObservableObject
             if (SetProperty(ref _mode, value))
             {
                 ApplyConstraints();
-                OnPropertyChanged(nameof(CanExportRawOrSource));
+                OnPropertyChanged(nameof(CanExportSource));
                 OnPropertyChanged(nameof(CanExportImages));
                 OnPropertyChanged(nameof(CanExportEdf));
                 OnPropertyChanged(nameof(CanStartExport));
@@ -146,7 +146,7 @@ public sealed class MultiExportViewModel : ObservableObject
     public string StatusText { get => _statusText; set => SetProperty(ref _statusText, value); }
 
     // Constraints
-    public bool CanExportRawOrSource => Mode != MultiExportMode.AllInOne;
+    public bool CanExportSource => Mode != MultiExportMode.AllInOne;
     public bool CanExportImages => Mode == MultiExportMode.SeparateFiles || Mode == MultiExportMode.FilePerStimul;
     public bool CanExportEdf => HasEeg && Mode == MultiExportMode.SeparateFiles;
 
@@ -317,12 +317,9 @@ public sealed class MultiExportViewModel : ObservableObject
         if (!CanExportEdf)
             ExportEdf = false;
 
-        // Raw/Source запрещены в AllInOne
-        if (!CanExportRawOrSource)
-        {
-            ExportRaw = false;
+        // Source запрещен в AllInOne
+        if (!CanExportSource)
             ExportSource = false;
-        }
     }
 
     private void LoadStimuli()

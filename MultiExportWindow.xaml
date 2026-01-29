@@ -499,9 +499,9 @@
                     </Grid.ColumnDefinitions>
 
                     <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                        <CheckBox Content="Исходные данные (bin)" IsChecked="{Binding ExportSource}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Сырые данные взгляда" IsChecked="{Binding ExportRaw}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
-                        <CheckBox Content="Действия" IsChecked="{Binding ExportActions}" IsEnabled="{Binding CanExportRawOrSource}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Исходные данные (bin)" IsChecked="{Binding ExportSource}" IsEnabled="{Binding CanExportSource}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Сырые данные взгляда" IsChecked="{Binding ExportRaw}" Margin="0,0,14,10"/>
+                        <CheckBox Content="Действия" IsChecked="{Binding ExportActions}" Margin="0,0,14,10"/>
                         <CheckBox Content="Области интереса" IsChecked="{Binding ExportAoi}" Margin="0,0,14,10"/>
                         <CheckBox Content="Карта движения взгляда" IsChecked="{Binding ExportGazeImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
                         <CheckBox Content="Тепловая карта" IsChecked="{Binding ExportHeatImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
