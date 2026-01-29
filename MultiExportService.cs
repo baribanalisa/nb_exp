@@ -32,6 +32,8 @@ public sealed class MultiExportService
     private readonly FilenameTemplateResolver _resolver = new();
 
     private const int MkRecordSize = 32;
+    private const int ExcelMaxRows = 1_048_576;
+    private const int ExcelAutoFitThreshold = 10_000;
 
     public MultiExportService(string expDir, ExperimentFile exp)
     {
@@ -346,21 +348,27 @@ public sealed class MultiExportService
             return;
         }
 
-        var data = ReadTrackerData(src);
-        System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Прочитано записей: {data.Count}");
-        
-        if (data.Count == 0)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Нет данных!");
-            return;
-        }
-
-        System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Создаю файл: {dst}");
-
         if (options.DataFormat == ExportDataFormat.XLSX)
+        {
+            var data = ReadTrackerData(src);
+            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Прочитано записей: {data.Count}");
+        
+            if (data.Count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Нет данных!");
+                return;
+            }
+
+            EnsureExcelRowLimit(data.Count, "raw gaze");
+
+            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Создаю файл: {dst}");
             WriteTrackerDataXlsx(dst, data, null);
+        }
         else
-            WriteTrackerDataCsv(dst, data, null);
+        {
+            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Создаю файл: {dst}");
+            WriteTrackerDataCsvFromFile(dst, src);
+        }
             
         System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Файл создан: {File.Exists(dst)}");
     }
@@ -371,23 +379,35 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, results[0], st, "raw_gaze_per_stimul", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string uid, TrackerData r)>();
-
-        foreach (var rr in results)
-        {
-            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
-            if (!File.Exists(src)) continue;
-
-            foreach (var r in ReadTrackerData(src))
-                allData.Add((rr.Uid, r));
-        }
-
-        if (allData.Count == 0) return;
-
         if (options.DataFormat == ExportDataFormat.XLSX)
+        {
+            var allData = new List<(string uid, TrackerData r)>();
+
+            foreach (var rr in results)
+            {
+                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
+                if (!File.Exists(src)) continue;
+
+                foreach (var r in ReadTrackerData(src))
+                {
+                    allData.Add((rr.Uid, r));
+                    EnsureExcelRowLimit(allData.Count, "raw gaze");
+                }
+            }
+
+            if (allData.Count == 0) return;
+
             WriteTrackerDataXlsx(dst, allData, "result_uid");
+        }
         else
-            WriteTrackerDataCsv(dst, allData, "result_uid");
+        {
+            var sources = results
+                .Select(rr => (uid: rr.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid)))
+                .Where(p => File.Exists(p.path));
+            var sourceList = sources.ToList();
+            if (sourceList.Count == 0) return;
+            WriteTrackerDataCsvFromFiles(dst, sourceList, "result_uid");
+        }
     }
 
     private void ExportRawGaze_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
@@ -396,23 +416,35 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, rr, stimuli[0], "raw_gaze_per_result", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string uid, TrackerData r)>();
-
-        foreach (var st in stimuli)
-        {
-            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
-            if (!File.Exists(src)) continue;
-
-            foreach (var r in ReadTrackerData(src))
-                allData.Add((st.Uid, r));
-        }
-
-        if (allData.Count == 0) return;
-
         if (options.DataFormat == ExportDataFormat.XLSX)
+        {
+            var allData = new List<(string uid, TrackerData r)>();
+
+            foreach (var st in stimuli)
+            {
+                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
+                if (!File.Exists(src)) continue;
+
+                foreach (var r in ReadTrackerData(src))
+                {
+                    allData.Add((st.Uid, r));
+                    EnsureExcelRowLimit(allData.Count, "raw gaze");
+                }
+            }
+
+            if (allData.Count == 0) return;
+
             WriteTrackerDataXlsx(dst, allData, "stimul_uid");
+        }
         else
-            WriteTrackerDataCsv(dst, allData, "stimul_uid");
+        {
+            var sources = stimuli
+                .Select(st => (uid: st.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid)))
+                .Where(p => File.Exists(p.path));
+            var sourceList = sources.ToList();
+            if (sourceList.Count == 0) return;
+            WriteTrackerDataCsvFromFiles(dst, sourceList, "stimul_uid");
+        }
     }
 
     // ===== Actions =====
@@ -428,13 +460,18 @@ public sealed class MultiExportService
         var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
         if (!File.Exists(src)) return;
 
-        var data = ReadActionsData(src);
-        if (data.Count == 0) return;
-
         if (options.DataFormat == ExportDataFormat.XLSX)
+        {
+            var data = ReadActionsData(src);
+            if (data.Count == 0) return;
+
+            EnsureExcelRowLimit(data.Count, "actions");
             WriteActionsDataXlsx(dst, data, null);
+        }
         else
-            WriteActionsDataCsv(dst, data, null);
+        {
+            WriteActionsDataCsvFromFile(dst, src);
+        }
     }
 
     private void ExportActions_AggregatedPerStimul(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
@@ -445,23 +482,35 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, results[0], st, "actions_per_stimul", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string uid, ActionRecord r)>();
-
-        foreach (var rr in results)
-        {
-            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
-            if (!File.Exists(src)) continue;
-
-            foreach (var r in ReadActionsData(src))
-                allData.Add((rr.Uid, r));
-        }
-
-        if (allData.Count == 0) return;
-
         if (options.DataFormat == ExportDataFormat.XLSX)
+        {
+            var allData = new List<(string uid, ActionRecord r)>();
+
+            foreach (var rr in results)
+            {
+                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
+                if (!File.Exists(src)) continue;
+
+                foreach (var r in ReadActionsData(src))
+                {
+                    allData.Add((rr.Uid, r));
+                    EnsureExcelRowLimit(allData.Count, "actions");
+                }
+            }
+
+            if (allData.Count == 0) return;
+
             WriteActionsDataXlsx(dst, allData, "result_uid");
+        }
         else
-            WriteActionsDataCsv(dst, allData, "result_uid");
+        {
+            var sources = results
+                .Select(rr => (uid: rr.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!)))
+                .Where(p => File.Exists(p.path));
+            var sourceList = sources.ToList();
+            if (sourceList.Count == 0) return;
+            WriteActionsDataCsvFromFiles(dst, sourceList, "result_uid");
+        }
     }
 
     private void ExportActions_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
@@ -472,23 +521,35 @@ public sealed class MultiExportService
         var name = BuildFileName(options, now, rr, stimuli[0], "actions_per_result", ext);
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
-        var allData = new List<(string uid, ActionRecord r)>();
-
-        foreach (var st in stimuli)
-        {
-            var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
-            if (!File.Exists(src)) continue;
-
-            foreach (var r in ReadActionsData(src))
-                allData.Add((st.Uid, r));
-        }
-
-        if (allData.Count == 0) return;
-
         if (options.DataFormat == ExportDataFormat.XLSX)
+        {
+            var allData = new List<(string uid, ActionRecord r)>();
+
+            foreach (var st in stimuli)
+            {
+                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
+                if (!File.Exists(src)) continue;
+
+                foreach (var r in ReadActionsData(src))
+                {
+                    allData.Add((st.Uid, r));
+                    EnsureExcelRowLimit(allData.Count, "actions");
+                }
+            }
+
+            if (allData.Count == 0) return;
+
             WriteActionsDataXlsx(dst, allData, "stimul_uid");
+        }
         else
-            WriteActionsDataCsv(dst, allData, "stimul_uid");
+        {
+            var sources = stimuli
+                .Select(st => (uid: st.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!)))
+                .Where(p => File.Exists(p.path));
+            var sourceList = sources.ToList();
+            if (sourceList.Count == 0) return;
+            WriteActionsDataCsvFromFiles(dst, sourceList, "stimul_uid");
+        }
     }
 
     // ===== AOI (CSV/XLSX) =====
@@ -1126,6 +1187,14 @@ public sealed class MultiExportService
     private static ImageFormat GetImageSaveFormat(ExportImageFormat format)
         => format == ExportImageFormat.JPG ? ImageFormat.Jpeg : ImageFormat.Png;
 
+    private static void EnsureExcelRowLimit(int rowCount, string datasetName)
+    {
+        if (rowCount <= ExcelMaxRows - 1) return;
+        throw new InvalidOperationException(
+            $"Слишком много строк ({rowCount}) для XLSX ({datasetName}). " +
+            "Используйте CSV или режим с раздельными файлами.");
+    }
+
     // ===== Tracker data reading =====
 
     private record ActionRecord(double time, uint mouse, uint key, double x, double y);
@@ -1133,17 +1202,7 @@ public sealed class MultiExportService
     private List<TrackerData> ReadTrackerData(string path)
     {
         var result = new List<TrackerData>();
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        var buf = new byte[TrackerData.Size];
-
-        while (true)
-        {
-            int read = fs.Read(buf, 0, buf.Length);
-            if (read == 0 || read != buf.Length) break;
-
-            var r = MemoryMarshal.Read<TrackerData>(buf);
-            result.Add(r);
-        }
+        ForEachTrackerData(path, result.Add);
 
         return result;
     }
@@ -1151,22 +1210,7 @@ public sealed class MultiExportService
     private List<ActionRecord> ReadActionsData(string path)
     {
         var result = new List<ActionRecord>();
-        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        Span<byte> buf = stackalloc byte[MkRecordSize];
-
-        while (true)
-        {
-            int n = fs.Read(buf);
-            if (n == 0 || n != MkRecordSize) break;
-
-            double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
-            uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
-            uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
-            double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
-            double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
-
-            result.Add(new ActionRecord(time, mouse, key, x, y));
-        }
+        ForEachActionRecord(path, result.Add);
 
         return result;
     }
@@ -1210,26 +1254,56 @@ public sealed class MultiExportService
         foreach (var (uid, r) in data)
         {
             sw.Write(uid); sw.Write(';');
-            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.z.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.valid.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.lx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.ly.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.rx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.ry.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.lp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.rp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.lopen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.ropen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.leyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.leyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.leyez.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.reyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.reyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.WriteLine(r.reyez.ToString(CultureInfo.InvariantCulture));
+            WriteTrackerRow(sw, r);
         }
+    }
+
+    private void WriteTrackerDataCsvFromFile(string path, string sourcePath)
+    {
+        using var sw = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
+        sw.WriteLine("time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
+
+        ForEachTrackerData(sourcePath, r => WriteTrackerRow(sw, r));
+    }
+
+    private void WriteTrackerDataCsvFromFiles(string path, IEnumerable<(string uid, string path)> sources, string uidColumn)
+    {
+        using var sw = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
+        sw.WriteLine($"{uidColumn};time_sec;x;y;z;valid;lx;ly;rx;ry;lp;rp;lopen;ropen;leyex;leyey;leyez;reyex;reyey;reyez");
+
+        foreach (var (uid, sourcePath) in sources)
+        {
+            ForEachTrackerData(sourcePath, r => WriteTrackerRow(sw, r, uid));
+        }
+    }
+
+    private static void WriteTrackerRow(StreamWriter sw, TrackerData r)
+    {
+        sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.y.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.z.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.valid.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.lx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.ly.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.rx.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.ry.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.lp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.rp.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.lopen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.ropen.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.leyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.leyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.leyez.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.reyex.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.reyey.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.WriteLine(r.reyez.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static void WriteTrackerRow(StreamWriter sw, TrackerData r, string uid)
+    {
+        sw.Write(uid); sw.Write(';');
+        WriteTrackerRow(sw, r);
     }
 
     private void WriteActionsDataCsv(string path, IEnumerable<ActionRecord> data, string? uidColumn)
@@ -1255,12 +1329,42 @@ public sealed class MultiExportService
         foreach (var (uid, r) in data)
         {
             sw.Write(uid); sw.Write(';');
-            sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
-            sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
+            WriteActionsRow(sw, r);
         }
+    }
+
+    private void WriteActionsDataCsvFromFile(string path, string sourcePath)
+    {
+        using var sw = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
+        sw.WriteLine("time_sec;mouse_button;keyboard_code;x;y");
+
+        ForEachActionRecord(sourcePath, r => WriteActionsRow(sw, r));
+    }
+
+    private void WriteActionsDataCsvFromFiles(string path, IEnumerable<(string uid, string path)> sources, string uidColumn)
+    {
+        using var sw = new StreamWriter(path, false, new System.Text.UTF8Encoding(true));
+        sw.WriteLine($"{uidColumn};time_sec;mouse_button;keyboard_code;x;y");
+
+        foreach (var (uid, sourcePath) in sources)
+        {
+            ForEachActionRecord(sourcePath, r => WriteActionsRow(sw, r, uid));
+        }
+    }
+
+    private static void WriteActionsRow(StreamWriter sw, ActionRecord r)
+    {
+        sw.Write(r.time.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.mouse.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.key.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.Write(r.x.ToString(CultureInfo.InvariantCulture)); sw.Write(';');
+        sw.WriteLine(r.y.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private static void WriteActionsRow(StreamWriter sw, ActionRecord r, string uid)
+    {
+        sw.Write(uid); sw.Write(';');
+        WriteActionsRow(sw, r);
     }
 
     private void WriteAoiDataCsv(string path, IEnumerable<(string stimUid, AoiElement aoi)> data)
@@ -1317,7 +1421,8 @@ public sealed class MultiExportService
             row++;
         }
 
-        ws.Columns().AdjustToContents();
+        if (row - 2 <= ExcelAutoFitThreshold)
+            ws.Columns().AdjustToContents();
         wb.SaveAs(path);
     }
 
@@ -1357,7 +1462,8 @@ public sealed class MultiExportService
             row++;
         }
 
-        ws.Columns().AdjustToContents();
+        if (row - 2 <= ExcelAutoFitThreshold)
+            ws.Columns().AdjustToContents();
         wb.SaveAs(path);
     }
 
@@ -1383,7 +1489,8 @@ public sealed class MultiExportService
             row++;
         }
 
-        ws.Columns().AdjustToContents();
+        if (row - 2 <= ExcelAutoFitThreshold)
+            ws.Columns().AdjustToContents();
         wb.SaveAs(path);
     }
 
@@ -1411,7 +1518,8 @@ public sealed class MultiExportService
             row++;
         }
 
-        ws.Columns().AdjustToContents();
+        if (row - 2 <= ExcelAutoFitThreshold)
+            ws.Columns().AdjustToContents();
         wb.SaveAs(path);
     }
 
@@ -1442,7 +1550,8 @@ public sealed class MultiExportService
             row++;
         }
 
-        ws.Columns().AdjustToContents();
+        if (row - 2 <= ExcelAutoFitThreshold)
+            ws.Columns().AdjustToContents();
         wb.SaveAs(path);
     }
 
@@ -1452,5 +1561,40 @@ public sealed class MultiExportService
         if (value.Contains(';') || value.Contains('"') || value.Contains('\n'))
             return $"\"{value.Replace("\"", "\"\"")}\"";
         return value;
+    }
+
+    private static void ForEachTrackerData(string path, Action<TrackerData> onRecord)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var buf = new byte[TrackerData.Size];
+
+        while (true)
+        {
+            int read = fs.Read(buf, 0, buf.Length);
+            if (read == 0 || read != buf.Length) break;
+
+            var r = MemoryMarshal.Read<TrackerData>(buf);
+            onRecord(r);
+        }
+    }
+
+    private static void ForEachActionRecord(string path, Action<ActionRecord> onRecord)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        Span<byte> buf = stackalloc byte[MkRecordSize];
+
+        while (true)
+        {
+            int n = fs.Read(buf);
+            if (n == 0 || n != MkRecordSize) break;
+
+            double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
+            uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
+            uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
+            double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
+            double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
+
+            onRecord(new ActionRecord(time, mouse, key, x, y));
+        }
     }
 }
