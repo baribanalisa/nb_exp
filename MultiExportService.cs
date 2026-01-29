@@ -3,7 +3,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
@@ -11,12 +10,9 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ClosedXML.Excel;
-
-// Явные псевдонимы для избежания конфликтов между System.Drawing и System.Windows
-using GdiColor = System.Drawing.Color;
-using GdiPointF = System.Drawing.PointF;
-using GdiRectangleF = System.Drawing.RectangleF;
 
 namespace NeuroBureau.Experiment;
 
@@ -30,17 +26,13 @@ public sealed class MultiExportService
     private readonly string? _mouseKbdUid;
     private readonly string? _shimmerUid;
     private readonly bool _hasEeg;
+    private readonly AnalysisDetectionSettings _detectSettings = new();
+    private readonly AnalysisVisualizationSettings _visualSettings;
+    private readonly StimulusHeatmapSettings _heatmapSettings;
 
     private readonly FilenameTemplateResolver _resolver = new();
 
     private const int MkRecordSize = 32;
-
-    // Настройки для генерации изображений
-    private const int DefaultScreenWidth = 1920;
-    private const int DefaultScreenHeight = 1080;
-    private const int HeatmapRadius = 50;
-    private const float GazeCircleRadius = 8f;
-    private const float GazeLineWidth = 2f;
 
     public MultiExportService(string expDir, ExperimentFile exp)
     {
@@ -56,6 +48,16 @@ public sealed class MultiExportService
         _mouseKbdUid = devices.FirstOrDefault(d => (d.DevType ?? "").IndexOf("mouse", StringComparison.OrdinalIgnoreCase) >= 0)?.Uid;
         _shimmerUid = devices.FirstOrDefault(d => (d.DevType ?? "").IndexOf("shimmer", StringComparison.OrdinalIgnoreCase) >= 0)?.Uid;
         _hasEeg = devices.Any(d => (d.DevType ?? "").IndexOf("eeg", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        _visualSettings = AppConfigManager.LoadAnalysisVisualizationSettings();
+        _heatmapSettings = new StimulusHeatmapSettings
+        {
+            Function = _visualSettings.HeatmapFunction,
+            Radius = _visualSettings.HeatmapRadius,
+            InitialOpacity = _visualSettings.HeatmapInitialOpacity,
+            Threshold = _visualSettings.HeatmapThreshold,
+            MapType = _visualSettings.HeatmapMapType
+        };
     }
 
     public void Export(
@@ -566,308 +568,476 @@ public sealed class MultiExportService
 
     private void ExportGazeImage(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, Action<string> report)
     {
-        var trackerPath = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
-        if (!File.Exists(trackerPath)) return;
-
-        var gazeData = ReadTrackerData(trackerPath);
-        if (gazeData.Count == 0) return;
-
-        // Получаем размеры и путь к стимулу
-        var (stimulusImage, width, height) = LoadStimulusBackground(st, rr.Uid);
-
-        var ext = GetImageExtension(options.ImageFormat);
-        var name = BuildFileName(options, now, rr, st, "gaze", ext);
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-        report($"Генерация карты взгляда: {st.Uid}");
-
-        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using var g = Graphics.FromImage(bitmap);
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-
-        // Рисуем фон стимула
-        if (stimulusImage != null)
+        try
         {
-            g.DrawImage(stimulusImage, 0, 0, width, height);
-            stimulusImage.Dispose();
+            report($"Генерация карты движения взгляда для {st.Uid}...");
+            
+            var preferredExt = GetImageExtension(options.ImageFormat);
+            var prebuilt = FindPrebuiltImage(rr.Uid, st.Uid, "gaze", preferredExt);
+            
+            if (prebuilt != null)
+            {
+                var (imagePath, foundExt) = prebuilt.Value;
+                var name = BuildFileName(options, now, rr, st, "gaze", preferredExt);
+                var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+                if (string.Equals(foundExt, preferredExt, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Copy(imagePath, dst, overwrite: true);
+                    report($"✓ Копирование существующей карты движения: {Path.GetFileName(dst)}");
+                    return;
+                }
+
+                using var img = Image.FromFile(imagePath);
+                img.Save(dst, GetImageSaveFormat(options.ImageFormat));
+                report($"✓ Конвертация существующей карты движения: {Path.GetFileName(dst)}");
+                return;
+            }
+
+            var fixations = GetFixationsForStim(rr.Uid, st.Uid);
+            if (fixations == null || fixations.Count == 0)
+            {
+                report("⚠ Невозможно сгенерировать карту движения: нет фиксаций");
+                return;
+            }
+
+            var (stimW, stimH) = GetStimulusDimensions(st);
+            if (stimW <= 0 || stimH <= 0)
+            {
+                report("⚠ Невозможно определить размеры стимула");
+                return;
+            }
+
+            var bitmap = ImageGenerator.GenerateGazeMap(
+                fixations,
+                stimW,
+                stimH,
+                _visualSettings,
+                Colors.Blue);
+
+            if (bitmap == null)
+            {
+                report("⚠ Ошибка генерации карты движения");
+                return;
+            }
+
+            var fileName = BuildFileName(options, now, rr, st, "gaze", preferredExt);
+            var dstPath = EnsureUniquePath(Path.Combine(options.OutputDir, fileName));
+            
+            SaveBitmapToFile(bitmap, dstPath, options.ImageFormat);
+            report($"✓ Генерация карты движения: {Path.GetFileName(dstPath)} ({fixations.Count} фиксаций)");
         }
-        else
+        catch (Exception ex)
         {
-            g.Clear(GdiColor.White);
+            report($"❌ Ошибка генерации карты движения: {ex.Message}");
         }
-
-        // Фильтруем валидные точки
-        var validPoints = gazeData
-            .Where(p => (p.valid & (int)TrackerDataValidity.COORD_VALID) != 0)
-            .Where(p => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1)
-            .Select(p => new GdiPointF(p.x * width, p.y * height))
-            .ToList();
-
-        if (validPoints.Count == 0)
-        {
-            bitmap.Dispose();
-            return;
-        }
-
-        // Рисуем линии между точками
-        using var linePen = new Pen(GdiColor.FromArgb(128, 0, 120, 255), GazeLineWidth);
-        for (int i = 1; i < validPoints.Count; i++)
-        {
-            g.DrawLine(linePen, validPoints[i - 1], validPoints[i]);
-        }
-
-        // Рисуем точки фиксации
-        using var circleBrush = new SolidBrush(GdiColor.FromArgb(180, 255, 100, 0));
-        using var circlePen = new Pen(GdiColor.FromArgb(200, 180, 60, 0), 1.5f);
-        foreach (var p in validPoints)
-        {
-            var rect = new GdiRectangleF(p.X - GazeCircleRadius, p.Y - GazeCircleRadius, 
-                                       GazeCircleRadius * 2, GazeCircleRadius * 2);
-            g.FillEllipse(circleBrush, rect);
-            g.DrawEllipse(circlePen, rect);
-        }
-
-        // Сохраняем
-        bitmap.Save(dst, GetImageSaveFormat(options.ImageFormat));
     }
 
     // ===== Heat Image (генерация на лету) =====
 
     private void ExportHeatImage(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st, Action<string> report)
     {
-        var trackerPath = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
-        if (!File.Exists(trackerPath)) return;
-
-        var gazeData = ReadTrackerData(trackerPath);
-        if (gazeData.Count == 0) return;
-
-        // Получаем размеры и путь к стимулу
-        var (stimulusImage, width, height) = LoadStimulusBackground(st, rr.Uid);
-
-        var ext = GetImageExtension(options.ImageFormat);
-        var name = BuildFileName(options, now, rr, st, "heat", ext);
-        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
-
-        report($"Генерация тепловой карты: {st.Uid}");
-
-        // Фильтруем валидные точки
-        var validPoints = gazeData
-            .Where(p => (p.valid & (int)TrackerDataValidity.COORD_VALID) != 0)
-            .Where(p => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1)
-            .Select(p => (x: (int)(p.x * width), y: (int)(p.y * height)))
-            .ToList();
-
-        if (validPoints.Count == 0)
+        try
         {
-            stimulusImage?.Dispose();
-            return;
+            report($"Генерация тепловой карты для {st.Uid}...");
+            
+            var preferredExt = GetImageExtension(options.ImageFormat);
+            var prebuilt = FindPrebuiltImage(rr.Uid, st.Uid, "heat", preferredExt);
+            
+            if (prebuilt != null)
+            {
+                var (imagePath, foundExt) = prebuilt.Value;
+                var name = BuildFileName(options, now, rr, st, "heat", preferredExt);
+                var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+                if (string.Equals(foundExt, preferredExt, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Copy(imagePath, dst, overwrite: true);
+                    report($"✓ Копирование существующей тепловой карты: {Path.GetFileName(dst)}");
+                    return;
+                }
+
+                using var img = Image.FromFile(imagePath);
+                img.Save(dst, GetImageSaveFormat(options.ImageFormat));
+                report($"✓ Конвертация существующей тепловой карты: {Path.GetFileName(dst)}");
+                return;
+            }
+
+            var samples = BuildHeatmapSamples(rr.Uid, st.Uid);
+            if (samples == null || samples.Count == 0)
+            {
+                report("⚠ Невозможно сгенерировать тепловую карту: нет данных");
+                return;
+            }
+
+            var (stimW, stimH) = GetStimulusDimensions(st);
+            if (stimW <= 0 || stimH <= 0)
+            {
+                report("⚠ Невозможно определить размеры стимула");
+                return;
+            }
+
+            var bitmap = ImageGenerator.GenerateHeatmap(
+                samples,
+                stimW,
+                stimH,
+                _heatmapSettings);
+
+            if (bitmap == null)
+            {
+                report("⚠ Ошибка генерации тепловой карты");
+                return;
+            }
+
+            var fileName = BuildFileName(options, now, rr, st, "heat", preferredExt);
+            var dstPath = EnsureUniquePath(Path.Combine(options.OutputDir, fileName));
+            
+            SaveBitmapToFile(bitmap, dstPath, options.ImageFormat);
+            report($"✓ Генерация тепловой карты: {Path.GetFileName(dstPath)} ({samples.Count} сэмплов)");
+        }
+        catch (Exception ex)
+        {
+            report($"❌ Ошибка генерации тепловой карты: {ex.Message}");
+        }
+    }
+
+    private (string path, string extension)? FindPrebuiltImage(string resultUid, string stimUid, string baseName, string preferredExt)
+    {
+        var dir = Path.Combine(_resultsDir, resultUid, stimUid);
+        if (!Directory.Exists(dir)) return null;
+
+        var knownExts = new List<string> { preferredExt, "png", "jpg", "jpeg", "bmp" };
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var ext in knownExts)
+        {
+            if (!seen.Add(ext)) continue;
+            var path = Path.Combine(dir, $"{baseName}.{ext}");
+            if (File.Exists(path))
+                return (path, ext);
         }
 
-        // Создаём буфер тепла
-        var heatBuffer = new double[height, width];
+        return null;
+    }
 
-        // Строим маску для размытия
-        int radius = HeatmapRadius;
-        var mask = BuildHeatmapMask(radius);
+    private void SaveBitmapToFile(WriteableBitmap bitmap, string path, ExportImageFormat format)
+    {
+        BitmapEncoder encoder = format == ExportImageFormat.JPG
+            ? new JpegBitmapEncoder { QualityLevel = 95 }
+            : new PngBitmapEncoder();
 
-        // Накапливаем тепло
-        foreach (var (px, py) in validPoints)
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
+        encoder.Save(fs);
+    }
+
+    private List<Fixation> GetFixationsForStim(string resultUid, string stimUid)
+    {
+        var raw = GetRawSamplesForStim(resultUid, stimUid);
+        if (raw.Count == 0) return new List<Fixation>();
+
+        var pre = AnalysisFixationPipeline.Preprocess(raw, _detectSettings);
+        var (screenW, screenH, screenWmm, screenHmm) = GetScreenDimensions(resultUid);
+
+        List<Fixation> fixScreen = _detectSettings.Algorithm == FixationAlgorithm.Ivt
+            ? AnalysisFixationPipeline.DetectIvt(pre, screenW, screenH, screenWmm, screenHmm, _detectSettings)
+            : AnalysisFixationPipeline.DetectIdt(pre, screenW, screenH, _detectSettings);
+
+        var stimFile = _exp.Stimuls?.FirstOrDefault(s => s.Uid == stimUid);
+        var (stimW, stimH) = GetStimulusDimensions(stimFile);
+        var (offX, offY, fitW, fitH) = FitRect(screenW, screenH, stimW, stimH, stimFile?.Scale ?? false);
+
+        return MapFixationsToStimRect(fixScreen, offX, offY, fitW, fitH);
+    }
+
+    private static List<Fixation> MapFixationsToStimRect(
+        IReadOnlyList<Fixation> fixations,
+        double offX,
+        double offY,
+        double fitW,
+        double fitH)
+    {
+        var result = new List<Fixation>(fixations.Count);
+        double maxX = offX + fitW;
+        double maxY = offY + fitH;
+
+        foreach (var fix in fixations)
         {
-            AddHeat(heatBuffer, mask, px, py, width, height, radius);
+            if (fix.Xpx < offX || fix.Xpx > maxX || fix.Ypx < offY || fix.Ypx > maxY)
+                continue;
+
+            float x = (float)(fix.Xpx - offX);
+            float y = (float)(fix.Ypx - offY);
+
+            result.Add(new Fixation(fix.StartSec, fix.DurSec, x, y));
         }
 
-        // Нормализуем
-        double maxHeat = 0;
-        for (int y = 0; y < height; y++)
-            for (int x = 0; x < width; x++)
-                if (heatBuffer[y, x] > maxHeat) maxHeat = heatBuffer[y, x];
+        return result;
+    }
 
-        if (maxHeat > 0)
+    private List<RawGazeSample> GetRawSamplesForStim(string resultUid, string stimUid)
+        => ReadRawSamplesForStim(resultUid, stimUid, _detectSettings.Eye);
+
+    private List<RawGazeSample> ReadRawSamplesForStim(string resultUid, string stimUid, EyeSelection eye)
+    {
+        var p = Path.Combine(_expDir, "results", resultUid, stimUid, _trackerUid);
+        if (!File.Exists(p)) return new();
+
+        var list = new List<RawGazeSample>(4096);
+
+        using var fs = new FileStream(p, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        Span<byte> buf = stackalloc byte[TrackerData.Size];
+
+        float t0 = float.NaN;
+        float prevT = float.NegativeInfinity;
+
+        while (true)
         {
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                    heatBuffer[y, x] /= maxHeat;
+            int n = fs.Read(buf);
+            if (n == 0) break;
+            if (n != TrackerData.Size) break;
+
+            int valid = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(0, 4));
+            float t = ReadF(buf, 4);
+            if (!float.IsFinite(t)) continue;
+
+            if (t <= prevT) continue;
+            prevT = t;
+
+            if (float.IsNaN(t0)) t0 = t;
+            float timeSec = t - t0;
+            if (!float.IsFinite(timeSec)) continue;
+
+            (bool ok, float xn, float yn) = ReadEyeCoords(buf, valid, eye);
+            bool openValid = ReadOpenValid(valid, eye);
+            float distM = ReadDistanceM(buf, valid);
+
+            if (ok)
+            {
+                if (!float.IsFinite(xn) || !float.IsFinite(yn)) ok = false;
+                else if (xn < 0 || xn > 1 || yn < 0 || yn > 1) ok = false;
+            }
+
+            if (!float.IsFinite(distM) || distM < 0) distM = 0;
+
+            list.Add(new RawGazeSample(timeSec: timeSec, xn: xn, yn: yn, distanceM: distM, valid: ok, openValid: openValid));
         }
 
-        // Создаём изображение
-        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using var g = Graphics.FromImage(bitmap);
+        return list;
 
-        // Рисуем фон стимула
-        if (stimulusImage != null)
+        static float ReadF(Span<byte> b, int off) =>
+            BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(b.Slice(off, 4)));
+
+        static (bool ok, float xn, float yn) ReadEyeCoords(Span<byte> b, int valid, EyeSelection eye)
         {
-            g.DrawImage(stimulusImage, 0, 0, width, height);
-            stimulusImage.Dispose();
-        }
-        else
-        {
-            g.Clear(GdiColor.White);
+            bool ok;
+            float xn, yn;
+
+            switch (eye)
+            {
+                case EyeSelection.LeftEye:
+                    ok = (valid & (int)TrackerDataValidity.LEFT_PUPIL_COORD_VALID) != 0;
+                    xn = ReadF(b, 60);
+                    yn = ReadF(b, 64);
+                    break;
+                case EyeSelection.RightEye:
+                    ok = (valid & (int)TrackerDataValidity.RIGHT_PUPIL_COORD_VALID) != 0;
+                    xn = ReadF(b, 52);
+                    yn = ReadF(b, 56);
+                    break;
+                default:
+                    ok = (valid & (int)TrackerDataValidity.COORD_VALID) != 0;
+                    xn = ReadF(b, 8);
+                    yn = ReadF(b, 12);
+                    break;
+            }
+
+            return (ok, xn, yn);
         }
 
-        // Накладываем тепловую карту (безопасный вариант без unsafe)
-        var heatmapOverlay = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+        static float ReadDistanceM(Span<byte> b, int valid)
+        {
+            bool lOk = (valid & (int)TrackerDataValidity.LEFT_PUPIL_3D_COORD_VALID) != 0;
+            bool rOk = (valid & (int)TrackerDataValidity.RIGHT_PUPIL_3D_COORD_VALID) != 0;
+
+            float lz = ReadF(b, 36);
+            float rz = ReadF(b, 48);
+
+            bool lGood = lOk && float.IsFinite(lz) && lz > 0;
+            bool rGood = rOk && float.IsFinite(rz) && rz > 0;
+
+            if (lGood && rGood) return (lz + rz) * 0.5f;
+            if (lGood) return lz;
+            if (rGood) return rz;
+            return 0f;
+        }
+
+        static bool ReadOpenValid(int valid, EyeSelection eye)
+        {
+            bool l = (valid & (int)TrackerDataValidity.LEFT_OPEN_VALID) != 0;
+            bool r = (valid & (int)TrackerDataValidity.RIGHT_OPEN_VALID) != 0;
+
+            return eye switch
+            {
+                EyeSelection.LeftEye => l,
+                EyeSelection.RightEye => r,
+                _ => l && r,
+            };
+        }
+    }
+
+    private List<HeatmapSample>? BuildHeatmapSamples(string resultUid, string stimUid)
+    {
+        var raw = GetRawSamplesForStim(resultUid, stimUid);
+        if (raw == null || raw.Count == 0) return null;
+
+        var preprocessed = AnalysisFixationPipeline.Preprocess(raw, _detectSettings);
         
-        for (int y = 0; y < height; y++)
+        var (screenW, screenH, _, _) = GetScreenDimensions(resultUid);
+        
+        var stimFile = _exp.Stimuls?.FirstOrDefault(s => s.Uid == stimUid);
+        var (stimW, stimH) = GetStimulusDimensions(stimFile);
+
+        var (offX, offY, fitW, fitH) = FitRect(screenW, screenH, stimW, stimH, stimFile?.Scale ?? false);
+
+        var samples = new List<HeatmapSample>(preprocessed.Count);
+        foreach (var sample in preprocessed)
         {
-            for (int x = 0; x < width; x++)
-            {
-                double v = heatBuffer[y, x];
-                var (r, gr, b, a) = HeatToColor(v);
-                heatmapOverlay.SetPixel(x, y, GdiColor.FromArgb(a, r, gr, b));
-            }
+            if (!sample.Valid) continue;
+
+            float screenX = sample.Xn * screenW;
+            float screenY = sample.Yn * screenH;
+
+            float stimX = (float)(screenX - offX);
+            float stimY = (float)(screenY - offY);
+
+            if (stimX < 0 || stimX >= fitW || stimY < 0 || stimY >= fitH)
+                continue;
+
+            samples.Add(new HeatmapSample(stimX, stimY));
         }
 
-        // Накладываем тепловую карту на фон
-        g.DrawImage(heatmapOverlay, 0, 0);
-        heatmapOverlay.Dispose();
-
-        // Сохраняем
-        bitmap.Save(dst, GetImageSaveFormat(options.ImageFormat));
+        return samples;
     }
 
-    private (Bitmap? image, int width, int height) LoadStimulusBackground(StimulFile st, string resultUid)
+    private (int width, int height) GetStimulusDimensions(StimulFile? st)
     {
-        int width = DefaultScreenWidth;
-        int height = DefaultScreenHeight;
-        Bitmap? stimImage = null;
+        if (st == null) return (1920, 1080);
 
-        // Пытаемся загрузить размеры экрана из result.json
-        var resultJsonPath = Path.Combine(_resultsDir, resultUid, "result.json");
-        if (File.Exists(resultJsonPath))
+        try
         {
-            try
+            var stimPath = Path.Combine(_expDir, "stimuli", st.Uid, st.Filename);
+            
+            if (File.Exists(stimPath))
             {
-                var json = File.ReadAllText(resultJsonPath);
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                var root = doc.RootElement;
+                if (IsImageFile(stimPath))
+                {
+                    using var img = Image.FromFile(stimPath);
+                    return (img.Width, img.Height);
+                }
                 
-                if (root.TryGetProperty("screen-width", out var wProp) && wProp.TryGetInt32(out var w) && w > 0)
-                    width = w;
-                if (root.TryGetProperty("screen-height", out var hProp) && hProp.TryGetInt32(out var h) && h > 0)
-                    height = h;
+                var (screenW, screenH, _, _) = GetScreenDimensions(st);
+                return (screenW, screenH);
             }
-            catch { /* игнорируем ошибки парсинга */ }
         }
-
-        // Пытаемся найти файл стимула
-        var stimPath = ResolveStimulusPath(st);
-        if (stimPath != null && File.Exists(stimPath))
+        catch
         {
-            try
-            {
-                using var fs = new FileStream(stimPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                stimImage = new Bitmap(fs);
-                // Если стимул — изображение, используем его размеры
-                width = stimImage.Width;
-                height = stimImage.Height;
-            }
-            catch
-            {
-                stimImage = null;
-            }
         }
 
-        return (stimImage, width, height);
+        var (w, h, _, _) = GetScreenDimensions(st);
+        return (w, h);
     }
 
-    private string? ResolveStimulusPath(StimulFile st)
+    private (int width, int height, int widthMm, int heightMm) GetScreenDimensions(StimulFile st)
     {
-        if (string.IsNullOrWhiteSpace(st.Filename)) return null;
-
-        var candidates = new[]
+        try
         {
-            Path.Combine(_expDir, st.Uid, st.Filename),
-            Path.Combine(_expDir, st.Filename),
-            Path.Combine(_expDir, "stimuli", st.Uid, st.Filename),
-            Path.Combine(_expDir, "stimuli", st.Filename),
-        };
-
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
-    private static double[,] BuildHeatmapMask(int radius)
-    {
-        int size = radius * 2;
-        var mask = new double[size, size];
-
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
+            if (Directory.Exists(_resultsDir))
             {
-                double dx = x - radius;
-                double dy = y - radius;
-                double dist = Math.Sqrt(dx * dx + dy * dy);
-                double norm = dist / radius;
+                foreach (var resultDir in Directory.EnumerateDirectories(_resultsDir))
+                {
+                    var resultJsonPath = Path.Combine(resultDir, "result.json");
+                    if (!File.Exists(resultJsonPath)) continue;
 
-                // Экспоненциальное затухание
-                mask[y, x] = norm <= 1.0 ? Math.Exp(-norm * 3.0) : 0.0;
+                    var json = File.ReadAllText(resultJsonPath);
+                    var result = JsonSerializer.Deserialize<ResultFile>(json);
+                    
+                    if (result != null)
+                    {
+                        int w = result.ScreenWidthPx > 0 ? result.ScreenWidthPx : 1920;
+                        int h = result.ScreenHeightPx > 0 ? result.ScreenHeightPx : 1080;
+                        int wmm = result.ScreenWidthMm > 0 ? result.ScreenWidthMm : 477;
+                        int hmm = result.ScreenHeightMm > 0 ? result.ScreenHeightMm : 268;
+                        return (w, h, wmm, hmm);
+                    }
+                }
             }
         }
+        catch
+        {
+        }
 
-        return mask;
+        return (1920, 1080, 477, 268);
     }
 
-    private static void AddHeat(double[,] buffer, double[,] mask, int cx, int cy, int width, int height, int radius)
+    private (int screenW, int screenH, int screenWmm, int screenHmm) GetScreenDimensions(string resultUid)
     {
-        int size = radius * 2;
-
-        for (int y = 0; y < size; y++)
+        try
         {
-            int ry = cy - radius + y;
-            if (ry < 0 || ry >= height) continue;
+            var resultJsonPath = Path.Combine(_resultsDir, resultUid, "result.json");
+            if (!File.Exists(resultJsonPath)) return (1920, 1080, 477, 268);
 
-            for (int x = 0; x < size; x++)
-            {
-                int rx = cx - radius + x;
-                if (rx < 0 || rx >= width) continue;
+            var json = File.ReadAllText(resultJsonPath);
+            var result = JsonSerializer.Deserialize<ResultFile>(json);
+            
+            if (result == null) return (1920, 1080, 477, 268);
 
-                buffer[ry, rx] += mask[y, x];
-            }
+            int w = result.ScreenWidthPx > 0 ? result.ScreenWidthPx : 1920;
+            int h = result.ScreenHeightPx > 0 ? result.ScreenHeightPx : 1080;
+            int wmm = result.ScreenWidthMm > 0 ? result.ScreenWidthMm : 477;
+            int hmm = result.ScreenHeightMm > 0 ? result.ScreenHeightMm : 268;
+
+            return (w, h, wmm, hmm);
+        }
+        catch
+        {
+            return (1920, 1080, 477, 268);
         }
     }
 
-    private static (byte r, byte g, byte b, byte a) HeatToColor(double v)
+    private bool IsImageFile(string path)
     {
-        // v от 0 до 1
-        v = Math.Clamp(v, 0, 1);
-
-        byte a = (byte)(v * 180); // Прозрачность зависит от интенсивности
-
-        // Цветовая палитра: синий -> зелёный -> жёлтый -> красный
-        byte r, g, b;
-
-        if (v < 0.25)
-        {
-            double t = v / 0.25;
-            r = 0;
-            g = (byte)(t * 255);
-            b = (byte)((1 - t) * 255);
-        }
-        else if (v < 0.5)
-        {
-            double t = (v - 0.25) / 0.25;
-            r = 0;
-            g = 255;
-            b = (byte)((1 - t) * 255);
-        }
-        else if (v < 0.75)
-        {
-            double t = (v - 0.5) / 0.25;
-            r = (byte)(t * 255);
-            g = 255;
-            b = 0;
-        }
-        else
-        {
-            double t = (v - 0.75) / 0.25;
-            r = 255;
-            g = (byte)((1 - t) * 255);
-            b = 0;
-        }
-
-        return (r, g, b, a);
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext is ".jpg" or ".jpeg" or ".png" or ".bmp" or ".gif";
     }
+
+    private (double offX, double offY, double fitW, double fitH) FitRect(
+        int containerW,
+        int containerH,
+        int contentW,
+        int contentH,
+        bool scaleToFit)
+    {
+        if (!scaleToFit)
+        {
+            double offX = Math.Max(0, (containerW - contentW) / 2.0);
+            double offY = Math.Max(0, (containerH - contentH) / 2.0);
+            return (offX, offY, contentW, contentH);
+        }
+
+        double scale = Math.Min(
+            (double)containerW / contentW,
+            (double)containerH / contentH);
+
+        double fitW = contentW * scale;
+        double fitH = contentH * scale;
+        double offX = (containerW - fitW) / 2.0;
+        double offY = (containerH - fitH) / 2.0;
+
+        return (offX, offY, fitW, fitH);
+    }
+
 
     // ===== EDF =====
 
