@@ -55,8 +55,8 @@ public static class ImageGenerator
                 overlay.SetFixationSeries(series);
 
                 // Measure и Arrange для WPF
-                overlay.Measure(new Size(width, height));
-                overlay.Arrange(new Rect(0, 0, width, height));
+                overlay.Measure(new System.Windows.Size(width, height));
+                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
 
                 // Рендерим в битмап
                 var renderBitmap = new RenderTargetBitmap(
@@ -117,8 +117,8 @@ public static class ImageGenerator
                 overlay.SetSamples(samples);
 
                 // Measure и Arrange для WPF
-                overlay.Measure(new Size(width, height));
-                overlay.Arrange(new Rect(0, 0, width, height));
+                overlay.Measure(new System.Windows.Size(width, height));
+                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
 
                 // Рендерим в битмап
                 var renderBitmap = new RenderTargetBitmap(
@@ -150,7 +150,7 @@ public static class ImageGenerator
     /// Генерирует композитную карту движения для нескольких результатов
     /// </summary>
     public static WriteableBitmap? GenerateCompositeGazeMap(
-        List<(List<Fixation> Fixations, Color Color)> seriesData,
+        List<(List<Fixation> Fixations, System.Windows.Media.Color Color)> seriesData,
         int width,
         int height,
         AnalysisVisualizationSettings settings)
@@ -182,8 +182,8 @@ public static class ImageGenerator
 
                 overlay.SetFixationSeries(series);
 
-                overlay.Measure(new Size(width, height));
-                overlay.Arrange(new Rect(0, 0, width, height));
+                overlay.Measure(new System.Windows.Size(width, height));
+                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
 
                 var renderBitmap = new RenderTargetBitmap(
                     width, height, 96, 96, PixelFormats.Pbgra32);
@@ -213,7 +213,7 @@ public static class ImageGenerator
     /// Генерирует композитную тепловую карту для нескольких результатов
     /// </summary>
     public static WriteableBitmap? GenerateCompositeHeatmap(
-        List<(List<HeatmapSample> Samples, Color Color)> seriesData,
+        List<(List<HeatmapSample> Samples, System.Windows.Media.Color Color)> seriesData,
         int width,
         int height,
         StimulusHeatmapSettings settings)
@@ -245,8 +245,8 @@ public static class ImageGenerator
 
                 overlay.SetHeatmapSeries(series);
 
-                overlay.Measure(new Size(width, height));
-                overlay.Arrange(new Rect(0, 0, width, height));
+                overlay.Measure(new System.Windows.Size(width, height));
+                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
 
                 var renderBitmap = new RenderTargetBitmap(
                     width, height, 96, 96, PixelFormats.Pbgra32);

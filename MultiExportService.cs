@@ -10,7 +10,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ClosedXML.Excel;
 
@@ -613,7 +612,7 @@ public sealed class MultiExportService
                 stimW,
                 stimH,
                 _visualSettings,
-                Color.Blue);
+                System.Drawing.Color.Blue);
 
             if (bitmap == null)
             {
