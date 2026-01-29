@@ -126,6 +126,12 @@ public sealed class MultiExportService
         int total = stimuli.Count * results.Count;
         int done = 0;
 
+        // Диагностика опций
+        report($"[DEBUG] ExportSource={options.ExportSource}, ExportRaw={options.ExportRaw}, ExportActions={options.ExportActions}, ExportAoi={options.ExportAoi}");
+        report($"[DEBUG] ExportGazeImage={options.ExportGazeImage}, ExportHeatImage={options.ExportHeatImage}");
+        report($"[DEBUG] DataFormat={options.DataFormat}, ImageFormat={options.ImageFormat}");
+        report($"[DEBUG] OutputDir={options.OutputDir}");
+
         foreach (var st in stimuli)
         {
             foreach (var rr in results)
@@ -138,19 +144,34 @@ public sealed class MultiExportService
                     ExportSourceFiles(options, now, rr, st, report);
 
                 if (options.ExportRaw)
+                {
+                    report($"[DEBUG] Вызываю ExportRawGaze для {rr.Uid}/{st.Uid}");
                     ExportRawGaze(options, now, rr, st);
+                }
 
                 if (options.ExportActions)
+                {
+                    report($"[DEBUG] Вызываю ExportActions для {rr.Uid}/{st.Uid}");
                     ExportActions(options, now, rr, st);
+                }
 
                 if (options.ExportAoi)
+                {
+                    report($"[DEBUG] Вызываю ExportAoi для {rr.Uid}/{st.Uid}");
                     ExportAoi(options, now, rr, st);
+                }
 
                 if (options.ExportGazeImage)
+                {
+                    report($"[DEBUG] Вызываю ExportGazeImage для {rr.Uid}/{st.Uid}");
                     ExportGazeImage(options, now, rr, st, report);
+                }
 
                 if (options.ExportHeatImage)
+                {
+                    report($"[DEBUG] Вызываю ExportHeatImage для {rr.Uid}/{st.Uid}");
                     ExportHeatImage(options, now, rr, st, report);
+                }
 
                 if (options.ExportEdf)
                     ExportEdfIfExists(options, now, rr, st, report);
@@ -306,15 +327,33 @@ public sealed class MultiExportService
         var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
 
         var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
-        if (!File.Exists(src)) return;
+        
+        // Диагностика
+        System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] src={src}, exists={File.Exists(src)}");
+        
+        if (!File.Exists(src))
+        {
+            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Файл не найден: {src}");
+            return;
+        }
 
         var data = ReadTrackerData(src);
-        if (data.Count == 0) return;
+        System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Прочитано записей: {data.Count}");
+        
+        if (data.Count == 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Нет данных!");
+            return;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Создаю файл: {dst}");
 
         if (options.DataFormat == ExportDataFormat.XLSX)
             WriteTrackerDataXlsx(dst, data, null);
         else
             WriteTrackerDataCsv(dst, data, null);
+            
+        System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Файл создан: {File.Exists(dst)}");
     }
 
     private void ExportRawGaze_AggregatedPerStimul(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, StimulFile st)
