@@ -41,7 +41,15 @@ public sealed class MultiExportService
 
         var devices = exp.Devices ?? new List<DeviceFile>();
 
-        _trackerUid = devices.FirstOrDefault(d => (d.DevType ?? "").IndexOf("tracker", StringComparison.OrdinalIgnoreCase) >= 0)?.Uid
+        static bool IsEyeTrackerType(string? t)
+        {
+            if (string.IsNullOrWhiteSpace(t)) return false;
+            return t.Equals("PathFinder", StringComparison.OrdinalIgnoreCase)
+                   || t.Equals("Gazepoint", StringComparison.OrdinalIgnoreCase)
+                   || t.Contains("tracker", StringComparison.OrdinalIgnoreCase);
+        }
+
+        _trackerUid = devices.FirstOrDefault(d => IsEyeTrackerType(d.DevType))?.Uid
                       ?? "tracker";
 
         _mouseKbdUid = devices.FirstOrDefault(d => (d.DevType ?? "").IndexOf("mouse", StringComparison.OrdinalIgnoreCase) >= 0)?.Uid;
