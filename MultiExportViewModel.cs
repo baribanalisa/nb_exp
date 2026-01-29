@@ -117,7 +117,7 @@ public sealed class MultiExportViewModel : ObservableObject
     }
 
     // Checkbox bindings
-    private bool _exportSource = true;
+    private bool _exportSource;
     public bool ExportSource { get => _exportSource; set => SetProperty(ref _exportSource, value); }
 
     private bool _exportRaw = true;
@@ -129,10 +129,10 @@ public sealed class MultiExportViewModel : ObservableObject
     private bool _exportAoi = true;
     public bool ExportAoi { get => _exportAoi; set => SetProperty(ref _exportAoi, value); }
 
-    private bool _exportGazeImage;
+    private bool _exportGazeImage = true;
     public bool ExportGazeImage { get => _exportGazeImage; set => SetProperty(ref _exportGazeImage, value); }
 
-    private bool _exportHeatImage;
+    private bool _exportHeatImage = true;
     public bool ExportHeatImage { get => _exportHeatImage; set => SetProperty(ref _exportHeatImage, value); }
 
     private bool _exportEdf;
@@ -178,6 +178,7 @@ public sealed class MultiExportViewModel : ObservableObject
         _initialSelectedResultUids = new HashSet<string>(initialSelectedResultUids, StringComparer.OrdinalIgnoreCase);
 
         var saved = AppConfigManager.LoadMultiExportSettings();
+        NormalizeSavedSettings(saved);
         _outputDir = saved.OutputDir;
         _filenameTemplate = saved.FilenameTemplate;
         _mode = saved.Mode;
@@ -190,6 +191,24 @@ public sealed class MultiExportViewModel : ObservableObject
         _exportGazeImage = saved.ExportGazeImage;
         _exportHeatImage = saved.ExportHeatImage;
         _exportEdf = saved.ExportEdf;
+    }
+
+    private static void NormalizeSavedSettings(MultiExportSettings settings)
+    {
+        if (settings.ExportSource &&
+            !settings.ExportRaw &&
+            !settings.ExportActions &&
+            !settings.ExportAoi &&
+            !settings.ExportGazeImage &&
+            !settings.ExportHeatImage)
+        {
+            settings.ExportSource = false;
+            settings.ExportRaw = true;
+            settings.ExportActions = true;
+            settings.ExportAoi = true;
+            settings.ExportGazeImage = true;
+            settings.ExportHeatImage = true;
+        }
     }
 
     public async Task InitializeAsync()
