@@ -25,7 +25,7 @@ public static class ImageGenerator
         int width,
         int height,
         AnalysisVisualizationSettings settings,
-        Color color)
+        System.Drawing.Color color)
     {
         if (fixations == null || fixations.Count == 0) return null;
         if (width <= 0 || height <= 0) return null;
@@ -50,7 +50,7 @@ public static class ImageGenerator
                 // Устанавливаем данные
                 var series = new List<FixationSeries>
                 {
-                    new(fixations, color)
+                    new(fixations, System.Windows.Media.Color.FromArgb(color.A, color.R, color.G, color.B))
                 };
                 overlay.SetFixationSeries(series);
 

@@ -613,7 +613,7 @@ public sealed class MultiExportService
                 stimW,
                 stimH,
                 _visualSettings,
-                Colors.Blue);
+                Color.Blue);
 
             if (bitmap == null)
             {
@@ -927,7 +927,8 @@ public sealed class MultiExportService
 
         try
         {
-            var stimPath = Path.Combine(_expDir, "stimuli", st.Uid, st.Filename);
+            var stimFilename = st.Filename ?? string.Empty;
+            var stimPath = Path.Combine(_expDir, "stimuli", st.Uid, stimFilename);
             
             if (File.Exists(stimPath))
             {
@@ -1021,9 +1022,9 @@ public sealed class MultiExportService
     {
         if (!scaleToFit)
         {
-            double offX = Math.Max(0, (containerW - contentW) / 2.0);
-            double offY = Math.Max(0, (containerH - contentH) / 2.0);
-            return (offX, offY, contentW, contentH);
+            double baseOffX = Math.Max(0, (containerW - contentW) / 2.0);
+            double baseOffY = Math.Max(0, (containerH - contentH) / 2.0);
+            return (baseOffX, baseOffY, contentW, contentH);
         }
 
         double scale = Math.Min(
