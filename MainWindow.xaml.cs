@@ -730,6 +730,12 @@ public partial class MainWindow : Window
     private WindowState _prevState;
     private bool _prevTopmost;
     private Brush? _prevBg;
+    private ResizeMode _prevResizeMode;
+    private WindowStartupLocation _prevStartupLocation;
+    private double _prevLeft;
+    private double _prevTop;
+    private double _prevWidth;
+    private double _prevHeight;
     // =======================
     // Mouse/Keyboard device logging (как в Vala MouseKbdData)
     // Запись 48 байт:
@@ -1364,14 +1370,35 @@ public partial class MainWindow : Window
         _prevState = WindowState;
         _prevTopmost = Topmost;
         _prevBg = Background;
+        _prevResizeMode = ResizeMode;
+        _prevStartupLocation = WindowStartupLocation;
+        _prevLeft = Left;
+        _prevTop = Top;
+        _prevWidth = Width;
+        _prevHeight = Height;
 
         SelectLayer.Visibility = Visibility.Collapsed;
         RunLayer.Visibility = Visibility.Visible;
 
         Background = Brushes.Black;
         WindowStyle = WindowStyle.None;
-        WindowState = WindowState.Maximized;
+        ResizeMode = ResizeMode.NoResize;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        WindowState = WindowState.Normal;
         Topmost = true;
+
+        var monitor = MonitorService.GetSelected(_writeDesktop);
+        if (!monitor.Bounds.IsEmpty)
+        {
+            Left = monitor.Bounds.Left;
+            Top = monitor.Bounds.Top;
+            Width = monitor.Bounds.Width;
+            Height = monitor.Bounds.Height;
+        }
+        else
+        {
+            WindowState = WindowState.Maximized;
+        }
 
         Activate();
         Focus();
@@ -1384,8 +1411,17 @@ public partial class MainWindow : Window
 
         Topmost = _prevTopmost;
         WindowStyle = _prevStyle;
+        ResizeMode = _prevResizeMode;
+        WindowStartupLocation = _prevStartupLocation;
         WindowState = _prevState;
         Background = _prevBg ?? Brushes.White;
+        if (_prevState == WindowState.Normal)
+        {
+            Left = _prevLeft;
+            Top = _prevTop;
+            Width = _prevWidth;
+            Height = _prevHeight;
+        }
 
         RunLayer.Visibility = Visibility.Collapsed;
         SelectLayer.Visibility = Visibility.Visible;
