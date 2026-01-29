@@ -34,6 +34,7 @@ public sealed class MultiExportService
     private const int MkRecordSize = 32;
     private const int ExcelMaxRows = 1_048_576;
     private const int ExcelAutoFitThreshold = 10_000;
+    private const int ExcelMemoryRowLimit = 200_000;
 
     public MultiExportService(string expDir, ExperimentFile exp)
     {
@@ -350,6 +351,9 @@ public sealed class MultiExportService
 
         if (options.DataFormat == ExportDataFormat.XLSX)
         {
+            var estimatedRows = CountRowsByRecordSize(src, TrackerData.Size);
+            EnsureXlsxCapacity(estimatedRows, "raw gaze");
+
             var data = ReadTrackerData(src);
             System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Прочитано записей: {data.Count}");
         
@@ -359,7 +363,7 @@ public sealed class MultiExportService
                 return;
             }
 
-            EnsureExcelRowLimit(data.Count, "raw gaze");
+            EnsureXlsxCapacity(data.Count, "raw gaze");
 
             System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Создаю файл: {dst}");
             WriteTrackerDataXlsx(dst, data, null);
@@ -381,6 +385,14 @@ public sealed class MultiExportService
 
         if (options.DataFormat == ExportDataFormat.XLSX)
         {
+            var estimatedRows = results
+                .Select(rr => Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid))
+                .Where(File.Exists)
+                .Select(path => CountRowsByRecordSize(path, TrackerData.Size))
+                .Sum();
+
+            EnsureXlsxCapacity(estimatedRows, "raw gaze");
+
             var allData = new List<(string uid, TrackerData r)>();
 
             foreach (var rr in results)
@@ -391,7 +403,6 @@ public sealed class MultiExportService
                 foreach (var r in ReadTrackerData(src))
                 {
                     allData.Add((rr.Uid, r));
-                    EnsureExcelRowLimit(allData.Count, "raw gaze");
                 }
             }
 
@@ -418,6 +429,14 @@ public sealed class MultiExportService
 
         if (options.DataFormat == ExportDataFormat.XLSX)
         {
+            var estimatedRows = stimuli
+                .Select(st => Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid))
+                .Where(File.Exists)
+                .Select(path => CountRowsByRecordSize(path, TrackerData.Size))
+                .Sum();
+
+            EnsureXlsxCapacity(estimatedRows, "raw gaze");
+
             var allData = new List<(string uid, TrackerData r)>();
 
             foreach (var st in stimuli)
@@ -428,7 +447,6 @@ public sealed class MultiExportService
                 foreach (var r in ReadTrackerData(src))
                 {
                     allData.Add((st.Uid, r));
-                    EnsureExcelRowLimit(allData.Count, "raw gaze");
                 }
             }
 
@@ -462,10 +480,13 @@ public sealed class MultiExportService
 
         if (options.DataFormat == ExportDataFormat.XLSX)
         {
+            var estimatedRows = CountRowsByRecordSize(src, MkRecordSize);
+            EnsureXlsxCapacity(estimatedRows, "actions");
+
             var data = ReadActionsData(src);
             if (data.Count == 0) return;
 
-            EnsureExcelRowLimit(data.Count, "actions");
+            EnsureXlsxCapacity(data.Count, "actions");
             WriteActionsDataXlsx(dst, data, null);
         }
         else
@@ -484,6 +505,14 @@ public sealed class MultiExportService
 
         if (options.DataFormat == ExportDataFormat.XLSX)
         {
+            var estimatedRows = results
+                .Select(rr => Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!))
+                .Where(File.Exists)
+                .Select(path => CountRowsByRecordSize(path, MkRecordSize))
+                .Sum();
+
+            EnsureXlsxCapacity(estimatedRows, "actions");
+
             var allData = new List<(string uid, ActionRecord r)>();
 
             foreach (var rr in results)
@@ -494,7 +523,6 @@ public sealed class MultiExportService
                 foreach (var r in ReadActionsData(src))
                 {
                     allData.Add((rr.Uid, r));
-                    EnsureExcelRowLimit(allData.Count, "actions");
                 }
             }
 
@@ -523,6 +551,14 @@ public sealed class MultiExportService
 
         if (options.DataFormat == ExportDataFormat.XLSX)
         {
+            var estimatedRows = stimuli
+                .Select(st => Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!))
+                .Where(File.Exists)
+                .Select(path => CountRowsByRecordSize(path, MkRecordSize))
+                .Sum();
+
+            EnsureXlsxCapacity(estimatedRows, "actions");
+
             var allData = new List<(string uid, ActionRecord r)>();
 
             foreach (var st in stimuli)
@@ -533,7 +569,6 @@ public sealed class MultiExportService
                 foreach (var r in ReadActionsData(src))
                 {
                     allData.Add((st.Uid, r));
-                    EnsureExcelRowLimit(allData.Count, "actions");
                 }
             }
 
@@ -1187,12 +1222,34 @@ public sealed class MultiExportService
     private static ImageFormat GetImageSaveFormat(ExportImageFormat format)
         => format == ExportImageFormat.JPG ? ImageFormat.Jpeg : ImageFormat.Png;
 
-    private static void EnsureExcelRowLimit(int rowCount, string datasetName)
+    private static void EnsureXlsxMemoryLimit(long rowCount, string datasetName)
     {
-        if (rowCount <= ExcelMaxRows - 1) return;
+        if (rowCount <= ExcelMemoryRowLimit) return;
         throw new InvalidOperationException(
-            $"Слишком много строк ({rowCount}) для XLSX ({datasetName}). " +
+            $"Слишком много строк ({rowCount}) для XLSX ({datasetName}) по памяти. " +
             "Используйте CSV или режим с раздельными файлами.");
+    }
+
+    private static void EnsureXlsxCapacity(int rowCount, string datasetName)
+    {
+        EnsureXlsxCapacity((long)rowCount, datasetName);
+    }
+
+    private static void EnsureXlsxCapacity(long rowCount, string datasetName)
+    {
+        if (rowCount > ExcelMaxRows - 1)
+            throw new InvalidOperationException(
+                $"Слишком много строк ({rowCount}) для XLSX ({datasetName}). " +
+                "Используйте CSV или режим с раздельными файлами.");
+
+        EnsureXlsxMemoryLimit(rowCount, datasetName);
+    }
+
+    private static long CountRowsByRecordSize(string path, int recordSize)
+    {
+        var info = new FileInfo(path);
+        if (info.Length <= 0 || recordSize <= 0) return 0;
+        return info.Length / recordSize;
     }
 
     // ===== Tracker data reading =====
