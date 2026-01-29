@@ -505,7 +505,6 @@
                         <CheckBox Content="Области интереса" IsChecked="{Binding ExportAoi}" Margin="0,0,14,10"/>
                         <CheckBox Content="Карта движения взгляда" IsChecked="{Binding ExportGazeImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
                         <CheckBox Content="Тепловая карта" IsChecked="{Binding ExportHeatImage}" IsEnabled="{Binding CanExportImages}" Margin="0,0,14,10"/>
-                        <CheckBox Content="EDF" IsChecked="{Binding ExportEdf}" IsEnabled="{Binding CanExportEdf}" Margin="0,0,14,10"/>
                     </WrapPanel>
 
                     <Button Grid.Column="1"
