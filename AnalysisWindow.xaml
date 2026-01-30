@@ -204,7 +204,9 @@
                          SelectionChanged="StimuliList_SelectionChanged"
                          BorderThickness="0"
                          Background="Transparent"
+                         ScrollViewer.CanContentScroll="True"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         VirtualizingStackPanel.ScrollUnit="Item"
                          ItemContainerStyle="{StaticResource StimulusListItemStyle}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
