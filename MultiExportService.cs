@@ -353,20 +353,15 @@ public sealed class MultiExportService
         {
             var estimatedRows = CountRowsByRecordSize(src, TrackerData.Size);
             EnsureXlsxCapacity(estimatedRows, "raw gaze");
-
-            var data = ReadTrackerData(src);
-            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Прочитано записей: {data.Count}");
-        
-            if (data.Count == 0)
+            System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Оценка записей: {estimatedRows}");
+            if (estimatedRows == 0)
             {
-                System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Нет данных!");
+                System.Diagnostics.Debug.WriteLine("[ExportRawGaze] Нет данных!");
                 return;
             }
 
-            EnsureXlsxCapacity(data.Count, "raw gaze");
-
             System.Diagnostics.Debug.WriteLine($"[ExportRawGaze] Создаю файл: {dst}");
-            WriteTrackerDataXlsx(dst, data, null);
+            WriteTrackerDataXlsx(dst, EnumerateTrackerData(src), null);
         }
         else
         {
@@ -392,23 +387,13 @@ public sealed class MultiExportService
                 .Sum();
 
             EnsureXlsxCapacity(estimatedRows, "raw gaze");
+            var sourceList = results
+                .Select(rr => (uid: rr.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid)))
+                .Where(p => File.Exists(p.path))
+                .ToList();
+            if (sourceList.Count == 0) return;
 
-            var allData = new List<(string uid, TrackerData r)>();
-
-            foreach (var rr in results)
-            {
-                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
-                if (!File.Exists(src)) continue;
-
-                foreach (var r in ReadTrackerData(src))
-                {
-                    allData.Add((rr.Uid, r));
-                }
-            }
-
-            if (allData.Count == 0) return;
-
-            WriteTrackerDataXlsx(dst, allData, "result_uid");
+            WriteTrackerDataXlsx(dst, EnumerateTrackerDataWithUid(sourceList), "result_uid");
         }
         else
         {
@@ -436,23 +421,13 @@ public sealed class MultiExportService
                 .Sum();
 
             EnsureXlsxCapacity(estimatedRows, "raw gaze");
+            var sourceList = stimuli
+                .Select(st => (uid: st.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid)))
+                .Where(p => File.Exists(p.path))
+                .ToList();
+            if (sourceList.Count == 0) return;
 
-            var allData = new List<(string uid, TrackerData r)>();
-
-            foreach (var st in stimuli)
-            {
-                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _trackerUid);
-                if (!File.Exists(src)) continue;
-
-                foreach (var r in ReadTrackerData(src))
-                {
-                    allData.Add((st.Uid, r));
-                }
-            }
-
-            if (allData.Count == 0) return;
-
-            WriteTrackerDataXlsx(dst, allData, "stimul_uid");
+            WriteTrackerDataXlsx(dst, EnumerateTrackerDataWithUid(sourceList), "stimul_uid");
         }
         else
         {
@@ -482,12 +457,8 @@ public sealed class MultiExportService
         {
             var estimatedRows = CountRowsByRecordSize(src, MkRecordSize);
             EnsureXlsxCapacity(estimatedRows, "actions");
-
-            var data = ReadActionsData(src);
-            if (data.Count == 0) return;
-
-            EnsureXlsxCapacity(data.Count, "actions");
-            WriteActionsDataXlsx(dst, data, null);
+            if (estimatedRows == 0) return;
+            WriteActionsDataXlsx(dst, EnumerateActionRecords(src), null);
         }
         else
         {
@@ -512,23 +483,13 @@ public sealed class MultiExportService
                 .Sum();
 
             EnsureXlsxCapacity(estimatedRows, "actions");
+            var sourceList = results
+                .Select(rr => (uid: rr.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!)))
+                .Where(p => File.Exists(p.path))
+                .ToList();
+            if (sourceList.Count == 0) return;
 
-            var allData = new List<(string uid, ActionRecord r)>();
-
-            foreach (var rr in results)
-            {
-                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
-                if (!File.Exists(src)) continue;
-
-                foreach (var r in ReadActionsData(src))
-                {
-                    allData.Add((rr.Uid, r));
-                }
-            }
-
-            if (allData.Count == 0) return;
-
-            WriteActionsDataXlsx(dst, allData, "result_uid");
+            WriteActionsDataXlsx(dst, EnumerateActionRecordsWithUid(sourceList), "result_uid");
         }
         else
         {
@@ -558,23 +519,13 @@ public sealed class MultiExportService
                 .Sum();
 
             EnsureXlsxCapacity(estimatedRows, "actions");
+            var sourceList = stimuli
+                .Select(st => (uid: st.Uid, path: Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!)))
+                .Where(p => File.Exists(p.path))
+                .ToList();
+            if (sourceList.Count == 0) return;
 
-            var allData = new List<(string uid, ActionRecord r)>();
-
-            foreach (var st in stimuli)
-            {
-                var src = Path.Combine(_resultsDir, rr.Uid, st.Uid, _mouseKbdUid!);
-                if (!File.Exists(src)) continue;
-
-                foreach (var r in ReadActionsData(src))
-                {
-                    allData.Add((st.Uid, r));
-                }
-            }
-
-            if (allData.Count == 0) return;
-
-            WriteActionsDataXlsx(dst, allData, "stimul_uid");
+            WriteActionsDataXlsx(dst, EnumerateActionRecordsWithUid(sourceList), "stimul_uid");
         }
         else
         {
@@ -1256,22 +1207,6 @@ public sealed class MultiExportService
 
     private record ActionRecord(double time, uint mouse, uint key, double x, double y);
 
-    private List<TrackerData> ReadTrackerData(string path)
-    {
-        var result = new List<TrackerData>();
-        ForEachTrackerData(path, result.Add);
-
-        return result;
-    }
-
-    private List<ActionRecord> ReadActionsData(string path)
-    {
-        var result = new List<ActionRecord>();
-        ForEachActionRecord(path, result.Add);
-
-        return result;
-    }
-
     // ===== CSV Writers =====
 
     private void WriteTrackerDataCsv(string path, IEnumerable<TrackerData> data, string? uidColumn)
@@ -1635,6 +1570,29 @@ public sealed class MultiExportService
         }
     }
 
+    private static IEnumerable<TrackerData> EnumerateTrackerData(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var buf = new byte[TrackerData.Size];
+
+        while (true)
+        {
+            int read = fs.Read(buf, 0, buf.Length);
+            if (read == 0 || read != buf.Length) yield break;
+
+            yield return MemoryMarshal.Read<TrackerData>(buf);
+        }
+    }
+
+    private static IEnumerable<(string uid, TrackerData r)> EnumerateTrackerDataWithUid(IEnumerable<(string uid, string path)> sources)
+    {
+        foreach (var (uid, path) in sources)
+        {
+            foreach (var r in EnumerateTrackerData(path))
+                yield return (uid, r);
+        }
+    }
+
     private static void ForEachActionRecord(string path, Action<ActionRecord> onRecord)
     {
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -1652,6 +1610,35 @@ public sealed class MultiExportService
             double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
 
             onRecord(new ActionRecord(time, mouse, key, x, y));
+        }
+    }
+
+    private static IEnumerable<ActionRecord> EnumerateActionRecords(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        Span<byte> buf = stackalloc byte[MkRecordSize];
+
+        while (true)
+        {
+            int n = fs.Read(buf);
+            if (n == 0 || n != MkRecordSize) yield break;
+
+            double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
+            uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
+            uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
+            double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
+            double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
+
+            yield return new ActionRecord(time, mouse, key, x, y);
+        }
+    }
+
+    private static IEnumerable<(string uid, ActionRecord r)> EnumerateActionRecordsWithUid(IEnumerable<(string uid, string path)> sources)
+    {
+        foreach (var (uid, path) in sources)
+        {
+            foreach (var r in EnumerateActionRecords(path))
+                yield return (uid, r);
         }
     }
 }
