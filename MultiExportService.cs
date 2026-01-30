@@ -31,7 +31,7 @@ public sealed class MultiExportService
 
     private readonly FilenameTemplateResolver _resolver = new();
 
-    private const int MkRecordSize = 32;
+    private const int MkRecordSize = 48;
     private const int ExcelMaxRows = 1_048_576;
     private const int ExcelAutoFitThreshold = 10_000;
     private const int ExcelMemoryRowLimit = 200_000;
@@ -993,17 +993,16 @@ public sealed class MultiExportService
 
         try
         {
-            var stimFilename = st.Filename ?? string.Empty;
-            var stimPath = Path.Combine(_expDir, "stimuli", st.Uid, stimFilename);
-            
-            if (File.Exists(stimPath))
+            var stimPath = ResolveStimulusPath(st.Uid, st.Filename);
+
+            if (stimPath != null && File.Exists(stimPath))
             {
                 if (IsImageFile(stimPath))
                 {
                     using var img = Image.FromFile(stimPath);
                     return (img.Width, img.Height);
                 }
-                
+
                 var (screenW, screenH, _, _) = GetScreenDimensions(st);
                 return (screenW, screenH);
             }
@@ -1018,13 +1017,38 @@ public sealed class MultiExportService
 
     private string? GetStimulusImagePath(StimulFile st)
     {
-        var stimFilename = st.Filename ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(stimFilename)) return null;
-
-        var stimPath = Path.Combine(_expDir, "stimuli", st.Uid, stimFilename);
-        if (!File.Exists(stimPath)) return null;
+        var stimPath = ResolveStimulusPath(st.Uid, st.Filename);
+        if (stimPath == null) return null;
 
         return IsImageFile(stimPath) ? stimPath : null;
+    }
+
+    private string? ResolveStimulusPath(string uid, string? filename)
+    {
+        if (string.IsNullOrWhiteSpace(filename)) return null;
+
+        // Пробуем несколько вариантов путей (как в AnalysisWindow)
+        // 1. {expDir}/{uid}/{filename}
+        var p1 = Path.Combine(_expDir, uid, filename);
+        if (File.Exists(p1)) return p1;
+
+        // 2. {expDir}/stimuli/{uid}/{filename}
+        var p2 = Path.Combine(_expDir, "stimuli", uid, filename);
+        if (File.Exists(p2)) return p2;
+
+        // 3. {expDir}/{filename}
+        var p3 = Path.Combine(_expDir, filename);
+        if (File.Exists(p3)) return p3;
+
+        // 4. Рекурсивный поиск
+        try
+        {
+            return Directory.EnumerateFiles(_expDir, filename, SearchOption.AllDirectories).FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private (int width, int height, int widthMm, int heightMm) GetScreenDimensions(StimulFile st)
