@@ -42,7 +42,7 @@ public sealed class MultiExportViewModel : ObservableObject
         }
     }
 
-    private string _filenameTemplate = "%date%_%id_result%_%id_stimul%_%type%";
+    private string _filenameTemplate = "%date%_%name_result%_%name_stimul%_%type%";
     public string FilenameTemplate
     {
         get => _filenameTemplate;
@@ -355,11 +355,11 @@ public sealed class MultiExportViewModel : ObservableObject
     {
         return mode switch
         {
-            MultiExportMode.SeparateFiles => "%id_stimul%_%id_result%_%type%",
-            MultiExportMode.FilePerStimul => "%id_stimul%_%type%",
-            MultiExportMode.FilePerResult => "%id_result%_%type%",
+            MultiExportMode.SeparateFiles => "%name_stimul%_%name_result%_%type%",
+            MultiExportMode.FilePerStimul => "%name_stimul%_%type%",
+            MultiExportMode.FilePerResult => "%name_result%_%type%",
             MultiExportMode.AllInOne => "%type%",
-            _ => "%id_stimul%_%id_result%_%type%"
+            _ => "%name_stimul%_%name_result%_%type%"
         };
     }
 

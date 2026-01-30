@@ -13,6 +13,8 @@ public sealed class FilenameTemplateResolver
         "date",
         "id_result",
         "id_stimul",
+        "name_result",
+        "name_stimul",
         "type",
         "stimul_filename",
     };
@@ -89,6 +91,20 @@ public sealed class FilenameTemplateResolver
 
             if (token.Equals("id_stimul", StringComparison.OrdinalIgnoreCase))
                 return stimul.Uid;
+
+            if (token.Equals("name_result", StringComparison.OrdinalIgnoreCase))
+            {
+                var name = GetResultName(result);
+                return string.IsNullOrWhiteSpace(name)
+                    ? (chars.TryGetValue("__id_result", out var id) ? id : "")
+                    : name;
+            }
+
+            if (token.Equals("name_stimul", StringComparison.OrdinalIgnoreCase))
+            {
+                var filename = Path.GetFileNameWithoutExtension(stimul.Filename ?? "");
+                return string.IsNullOrWhiteSpace(filename) ? stimul.Uid : filename;
+            }
 
             if (token.Equals("type", StringComparison.OrdinalIgnoreCase))
                 return type;
@@ -185,5 +201,23 @@ public sealed class FilenameTemplateResolver
             cleaned = "export";
 
         return cleaned;
+    }
+
+    private static string GetResultName(ResultFile result)
+    {
+        var charsData = result.CharsData;
+        if (charsData == null || charsData.Count == 0) return "";
+
+        // Ищем характеристику с именем участника
+        var nameChar = charsData.FirstOrDefault(c =>
+            c.Name != null && (
+                c.Name.Equals("name", StringComparison.OrdinalIgnoreCase) ||
+                c.Name.Equals("имя", StringComparison.OrdinalIgnoreCase) ||
+                c.Name.Equals("participant", StringComparison.OrdinalIgnoreCase) ||
+                c.Name.Equals("участник", StringComparison.OrdinalIgnoreCase) ||
+                c.Name.Equals("испытуемый", StringComparison.OrdinalIgnoreCase) ||
+                c.Name.Equals("фио", StringComparison.OrdinalIgnoreCase)));
+
+        return nameChar?.Val ?? "";
     }
 }
