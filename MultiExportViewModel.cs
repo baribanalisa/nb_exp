@@ -43,6 +43,8 @@ public sealed class MultiExportViewModel : ObservableObject
     }
 
     private string _filenameTemplate = "%date%_%id_result%_%id_stimul%_%type%";
+    private bool _templateManuallyEdited;
+    private bool _suppressTemplateEditTracking;
     public string FilenameTemplate
     {
         get => _filenameTemplate;
@@ -50,6 +52,8 @@ public sealed class MultiExportViewModel : ObservableObject
         {
             if (SetProperty(ref _filenameTemplate, value ?? ""))
             {
+                if (!_suppressTemplateEditTracking)
+                    _templateManuallyEdited = true;
                 ValidateTemplate();
                 OnPropertyChanged(nameof(CanStartExport));
             }
@@ -88,6 +92,7 @@ public sealed class MultiExportViewModel : ObservableObject
             if (SetProperty(ref _mode, value))
             {
                 ApplyConstraints();
+                ApplyRecommendedTemplateIfNeeded();
                 OnPropertyChanged(nameof(CanExportSource));
                 OnPropertyChanged(nameof(CanExportImages));
                 OnPropertyChanged(nameof(CanExportEdf));
@@ -191,6 +196,8 @@ public sealed class MultiExportViewModel : ObservableObject
         _exportGazeImage = saved.ExportGazeImage;
         _exportHeatImage = saved.ExportHeatImage;
         _exportEdf = saved.ExportEdf;
+        _templateManuallyEdited = !string.IsNullOrWhiteSpace(_filenameTemplate)
+            && !IsRecommendedTemplateForMode(_filenameTemplate, _mode);
     }
 
     private static void NormalizeSavedSettings(MultiExportSettings settings)
@@ -339,6 +346,43 @@ public sealed class MultiExportViewModel : ObservableObject
         // Source запрещен в AllInOne
         if (!CanExportSource)
             ExportSource = false;
+    }
+
+    private void ApplyRecommendedTemplateIfNeeded()
+    {
+        if (_templateManuallyEdited)
+            return;
+
+        var recommended = GetRecommendedTemplate(Mode);
+        if (string.Equals(FilenameTemplate, recommended, StringComparison.Ordinal))
+            return;
+
+        _suppressTemplateEditTracking = true;
+        try
+        {
+            FilenameTemplate = recommended;
+        }
+        finally
+        {
+            _suppressTemplateEditTracking = false;
+        }
+    }
+
+    private static bool IsRecommendedTemplateForMode(string template, MultiExportMode mode)
+    {
+        return string.Equals(template, GetRecommendedTemplate(mode), StringComparison.Ordinal);
+    }
+
+    private static string GetRecommendedTemplate(MultiExportMode mode)
+    {
+        return mode switch
+        {
+            MultiExportMode.SeparateFiles => "%id_stimul%_%id_result%_%type%",
+            MultiExportMode.FilePerStimul => "%id_stimul%_%type%",
+            MultiExportMode.FilePerResult => "%id_result%_%type%",
+            MultiExportMode.AllInOne => "%type%",
+            _ => "%id_stimul%_%id_result%_%type%"
+        };
     }
 
     private void LoadStimuli()
