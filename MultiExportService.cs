@@ -667,7 +667,8 @@ public sealed class MultiExportService
                 stimW,
                 stimH,
                 _visualSettings,
-                System.Drawing.Color.Blue);
+                System.Drawing.Color.Blue,
+                GetStimulusImagePath(st));
 
             if (bitmap == null)
             {
@@ -735,7 +736,8 @@ public sealed class MultiExportService
                 samples,
                 stimW,
                 stimH,
-                _heatmapSettings);
+                _heatmapSettings,
+                GetStimulusImagePath(st));
 
             if (bitmap == null)
             {
@@ -1002,6 +1004,17 @@ public sealed class MultiExportService
 
         var (w, h, _, _) = GetScreenDimensions(st);
         return (w, h);
+    }
+
+    private string? GetStimulusImagePath(StimulFile st)
+    {
+        var stimFilename = st.Filename ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(stimFilename)) return null;
+
+        var stimPath = Path.Combine(_expDir, "stimuli", st.Uid, stimFilename);
+        if (!File.Exists(stimPath)) return null;
+
+        return IsImageFile(stimPath) ? stimPath : null;
     }
 
     private (int width, int height, int widthMm, int heightMm) GetScreenDimensions(StimulFile st)

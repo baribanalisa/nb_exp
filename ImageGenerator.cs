@@ -4,9 +4,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -25,7 +27,8 @@ public static class ImageGenerator
         int width,
         int height,
         AnalysisVisualizationSettings settings,
-        System.Drawing.Color color)
+        System.Drawing.Color color,
+        string? backgroundPath = null)
     {
         if (fixations == null || fixations.Count == 0) return null;
         if (width <= 0 || height <= 0) return null;
@@ -54,15 +57,13 @@ public static class ImageGenerator
                 };
                 overlay.SetFixationSeries(series);
 
-                // Measure и Arrange для WPF
-                overlay.Measure(new System.Windows.Size(width, height));
-                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
+                var root = WrapWithBackground(overlay, width, height, backgroundPath);
 
                 // Рендерим в битмап
                 var renderBitmap = new RenderTargetBitmap(
                     width, height, 96, 96, PixelFormats.Pbgra32);
                 
-                renderBitmap.Render(overlay);
+                renderBitmap.Render(root);
 
                 // Конвертируем в WriteableBitmap
                 result = new WriteableBitmap(renderBitmap);
@@ -91,7 +92,8 @@ public static class ImageGenerator
         List<HeatmapSample> samples,
         int width,
         int height,
-        StimulusHeatmapSettings settings)
+        StimulusHeatmapSettings settings,
+        string? backgroundPath = null)
     {
         if (samples == null || samples.Count == 0) return null;
         if (width <= 0 || height <= 0) return null;
@@ -116,15 +118,13 @@ public static class ImageGenerator
                 // Устанавливаем данные
                 overlay.SetSamples(samples);
 
-                // Measure и Arrange для WPF
-                overlay.Measure(new System.Windows.Size(width, height));
-                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
+                var root = WrapWithBackground(overlay, width, height, backgroundPath);
 
                 // Рендерим в битмап
                 var renderBitmap = new RenderTargetBitmap(
                     width, height, 96, 96, PixelFormats.Pbgra32);
                 
-                renderBitmap.Render(overlay);
+                renderBitmap.Render(root);
 
                 // Конвертируем в WriteableBitmap
                 result = new WriteableBitmap(renderBitmap);
@@ -153,7 +153,8 @@ public static class ImageGenerator
         List<(List<Fixation> Fixations, System.Windows.Media.Color Color)> seriesData,
         int width,
         int height,
-        AnalysisVisualizationSettings settings)
+        AnalysisVisualizationSettings settings,
+        string? backgroundPath = null)
     {
         if (seriesData == null || seriesData.Count == 0) return null;
         if (width <= 0 || height <= 0) return null;
@@ -182,13 +183,12 @@ public static class ImageGenerator
 
                 overlay.SetFixationSeries(series);
 
-                overlay.Measure(new System.Windows.Size(width, height));
-                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
+                var root = WrapWithBackground(overlay, width, height, backgroundPath);
 
                 var renderBitmap = new RenderTargetBitmap(
                     width, height, 96, 96, PixelFormats.Pbgra32);
                 
-                renderBitmap.Render(overlay);
+                renderBitmap.Render(root);
 
                 result = new WriteableBitmap(renderBitmap);
                 result.Freeze();
@@ -216,7 +216,8 @@ public static class ImageGenerator
         List<(List<HeatmapSample> Samples, System.Windows.Media.Color Color)> seriesData,
         int width,
         int height,
-        StimulusHeatmapSettings settings)
+        StimulusHeatmapSettings settings,
+        string? backgroundPath = null)
     {
         if (seriesData == null || seriesData.Count == 0) return null;
         if (width <= 0 || height <= 0) return null;
@@ -245,13 +246,12 @@ public static class ImageGenerator
 
                 overlay.SetHeatmapSeries(series);
 
-                overlay.Measure(new System.Windows.Size(width, height));
-                overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
+                var root = WrapWithBackground(overlay, width, height, backgroundPath);
 
                 var renderBitmap = new RenderTargetBitmap(
                     width, height, 96, 96, PixelFormats.Pbgra32);
                 
-                renderBitmap.Render(overlay);
+                renderBitmap.Render(root);
 
                 result = new WriteableBitmap(renderBitmap);
                 result.Freeze();
@@ -270,5 +270,66 @@ public static class ImageGenerator
             throw new InvalidOperationException($"Ошибка генерации композитной тепловой карты: {error.Message}", error);
 
         return result;
+    }
+
+    private static FrameworkElement WrapWithBackground(FrameworkElement overlay, int width, int height, string? backgroundPath)
+    {
+        overlay.Width = width;
+        overlay.Height = height;
+
+        if (string.IsNullOrWhiteSpace(backgroundPath) || !File.Exists(backgroundPath))
+        {
+            overlay.Measure(new System.Windows.Size(width, height));
+            overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
+            return overlay;
+        }
+
+        var bitmap = LoadBitmapImage(backgroundPath);
+        if (bitmap == null)
+        {
+            overlay.Measure(new System.Windows.Size(width, height));
+            overlay.Arrange(new System.Windows.Rect(0, 0, width, height));
+            return overlay;
+        }
+
+        var grid = new Grid
+        {
+            Width = width,
+            Height = height
+        };
+
+        var image = new Image
+        {
+            Source = bitmap,
+            Width = width,
+            Height = height,
+            Stretch = Stretch.Fill
+        };
+
+        grid.Children.Add(image);
+        grid.Children.Add(overlay);
+
+        grid.Measure(new System.Windows.Size(width, height));
+        grid.Arrange(new System.Windows.Rect(0, 0, width, height));
+
+        return grid;
+    }
+
+    private static BitmapImage? LoadBitmapImage(string path)
+    {
+        try
+        {
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.UriSource = new Uri(path, UriKind.Absolute);
+            bmp.EndInit();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
