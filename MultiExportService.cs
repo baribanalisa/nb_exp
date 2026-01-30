@@ -627,9 +627,11 @@ public sealed class MultiExportService
             report($"Генерация карты движения взгляда для {st.Uid}...");
             
             var preferredExt = GetImageExtension(options.ImageFormat);
+            var backgroundPath = GetStimulusImagePath(st);
+            var hasBackground = !string.IsNullOrWhiteSpace(backgroundPath);
             var prebuilt = FindPrebuiltImage(rr.Uid, st.Uid, "gaze", preferredExt);
             
-            if (prebuilt != null)
+            if (prebuilt != null && !hasBackground)
             {
                 var (imagePath, foundExt) = prebuilt.Value;
                 var name = BuildFileName(options, now, rr, st, "gaze", preferredExt);
@@ -662,13 +664,16 @@ public sealed class MultiExportService
                 return;
             }
 
+            if (!hasBackground)
+                report("⚠ Фоновое изображение стимула не найдено, карта будет без подложки");
+
             var bitmap = ImageGenerator.GenerateGazeMap(
                 fixations,
                 stimW,
                 stimH,
                 _visualSettings,
                 System.Drawing.Color.Blue,
-                GetStimulusImagePath(st));
+                backgroundPath);
 
             if (bitmap == null)
             {
@@ -697,9 +702,11 @@ public sealed class MultiExportService
             report($"Генерация тепловой карты для {st.Uid}...");
             
             var preferredExt = GetImageExtension(options.ImageFormat);
+            var backgroundPath = GetStimulusImagePath(st);
+            var hasBackground = !string.IsNullOrWhiteSpace(backgroundPath);
             var prebuilt = FindPrebuiltImage(rr.Uid, st.Uid, "heat", preferredExt);
             
-            if (prebuilt != null)
+            if (prebuilt != null && !hasBackground)
             {
                 var (imagePath, foundExt) = prebuilt.Value;
                 var name = BuildFileName(options, now, rr, st, "heat", preferredExt);
@@ -732,12 +739,15 @@ public sealed class MultiExportService
                 return;
             }
 
+            if (!hasBackground)
+                report("⚠ Фоновое изображение стимула не найдено, карта будет без подложки");
+
             var bitmap = ImageGenerator.GenerateHeatmap(
                 samples,
                 stimW,
                 stimH,
                 _heatmapSettings,
-                GetStimulusImagePath(st));
+                backgroundPath);
 
             if (bitmap == null)
             {
