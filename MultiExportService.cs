@@ -1616,18 +1616,19 @@ public sealed class MultiExportService
     private static IEnumerable<ActionRecord> EnumerateActionRecords(string path)
     {
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        Span<byte> buf = stackalloc byte[MkRecordSize];
+        var buf = new byte[MkRecordSize];
 
         while (true)
         {
-            int n = fs.Read(buf);
+            int n = fs.Read(buf, 0, buf.Length);
             if (n == 0 || n != MkRecordSize) yield break;
 
-            double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(0, 8)));
-            uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(8, 4));
-            uint key = BinaryPrimitives.ReadUInt32LittleEndian(buf.Slice(12, 4));
-            double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(16, 8)));
-            double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(buf.Slice(24, 8)));
+            var span = buf.AsSpan();
+            double time = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(span.Slice(0, 8)));
+            uint mouse = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(8, 4));
+            uint key = BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(12, 4));
+            double x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(span.Slice(16, 8)));
+            double y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(span.Slice(24, 8)));
 
             yield return new ActionRecord(time, mouse, key, x, y);
         }
