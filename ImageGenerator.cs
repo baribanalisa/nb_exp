@@ -298,7 +298,7 @@ public static class ImageGenerator
             Height = height
         };
 
-        var image = new Image
+        var image = new System.Windows.Controls.Image
         {
             Source = bitmap,
             Width = width,
