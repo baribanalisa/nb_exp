@@ -43,8 +43,6 @@ public sealed class MultiExportViewModel : ObservableObject
     }
 
     private string _filenameTemplate = "%date%_%id_result%_%id_stimul%_%type%";
-    private bool _templateManuallyEdited;
-    private bool _suppressTemplateEditTracking;
     public string FilenameTemplate
     {
         get => _filenameTemplate;
@@ -52,8 +50,6 @@ public sealed class MultiExportViewModel : ObservableObject
         {
             if (SetProperty(ref _filenameTemplate, value ?? ""))
             {
-                if (!_suppressTemplateEditTracking)
-                    _templateManuallyEdited = true;
                 ValidateTemplate();
                 OnPropertyChanged(nameof(CanStartExport));
             }
@@ -92,7 +88,7 @@ public sealed class MultiExportViewModel : ObservableObject
             if (SetProperty(ref _mode, value))
             {
                 ApplyConstraints();
-                ApplyRecommendedTemplateIfNeeded();
+                ApplyRecommendedTemplate();
                 OnPropertyChanged(nameof(CanExportSource));
                 OnPropertyChanged(nameof(CanExportImages));
                 OnPropertyChanged(nameof(CanExportEdf));
@@ -185,8 +181,8 @@ public sealed class MultiExportViewModel : ObservableObject
         var saved = AppConfigManager.LoadMultiExportSettings();
         NormalizeSavedSettings(saved);
         _outputDir = saved.OutputDir;
-        _filenameTemplate = saved.FilenameTemplate;
         _mode = saved.Mode;
+        _filenameTemplate = GetRecommendedTemplate(_mode);
         _dataFormat = saved.DataFormat;
         _imageFormat = saved.ImageFormat;
         _exportSource = saved.ExportSource;
@@ -196,8 +192,6 @@ public sealed class MultiExportViewModel : ObservableObject
         _exportGazeImage = saved.ExportGazeImage;
         _exportHeatImage = saved.ExportHeatImage;
         _exportEdf = saved.ExportEdf;
-        _templateManuallyEdited = !string.IsNullOrWhiteSpace(_filenameTemplate)
-            && !IsRecommendedTemplateForMode(_filenameTemplate, _mode);
     }
 
     private static void NormalizeSavedSettings(MultiExportSettings settings)
@@ -348,29 +342,13 @@ public sealed class MultiExportViewModel : ObservableObject
             ExportSource = false;
     }
 
-    private void ApplyRecommendedTemplateIfNeeded()
+    private void ApplyRecommendedTemplate()
     {
-        if (_templateManuallyEdited)
-            return;
-
         var recommended = GetRecommendedTemplate(Mode);
         if (string.Equals(FilenameTemplate, recommended, StringComparison.Ordinal))
             return;
 
-        _suppressTemplateEditTracking = true;
-        try
-        {
-            FilenameTemplate = recommended;
-        }
-        finally
-        {
-            _suppressTemplateEditTracking = false;
-        }
-    }
-
-    private static bool IsRecommendedTemplateForMode(string template, MultiExportMode mode)
-    {
-        return string.Equals(template, GetRecommendedTemplate(mode), StringComparison.Ordinal);
+        FilenameTemplate = recommended;
     }
 
     private static string GetRecommendedTemplate(MultiExportMode mode)

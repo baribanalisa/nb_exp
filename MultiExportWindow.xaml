@@ -378,7 +378,8 @@
 
                     <TextBox Grid.Column="0"
                              Text="{Binding FilenameTemplate, UpdateSourceTrigger=PropertyChanged}"
-                             MinWidth="520"/>
+                             MinWidth="520"
+                             IsReadOnly="True"/>
 
                     <TextBlock Grid.Column="1"
                                Text="{Binding TemplateStatusEmoji}"
