@@ -5,11 +5,7 @@ using System.Windows.Media;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
-using Colors = System.Windows.Media.Colors;
-using Point = System.Windows.Point;
-using Pen = System.Windows.Media.Pen;
-using FontFamily = System.Windows.Media.FontFamily;
-using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+
 namespace NeuroBureau.Experiment;
 
 public sealed class RgbaToBrushConverter : IValueConverter
@@ -28,23 +24,43 @@ public sealed class RgbaToBrushConverter : IValueConverter
     {
         if (string.IsNullOrWhiteSpace(rgba)) return null;
 
-        // "#RRGGBB" / "#AARRGGBB"
-        if (rgba.TrimStart().StartsWith("#"))
+        var input = rgba.Trim();
+
+        // 1. Hex с # (#RGB, #RRGGBB, #AARRGGBB)
+        if (input.StartsWith("#"))
         {
-            try
-            {
-                var obj = new BrushConverter().ConvertFromString(rgba);
-                if (obj is SolidColorBrush b)
-                {
-                    if (!b.IsFrozen) b.Freeze();
-                    return b;
-                }
-            }
-            catch { }
+            if (TryParseHexColor(input, out var color))
+                return CreateFrozenBrush(color);
         }
 
-        // "1 0 0 1" or "255,0,0,255"
-        var parts = rgba.Split(new[] { ' ', ',', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        // 2. rgb(r,g,b) или rgba(r,g,b,a)
+        if (input.StartsWith("rgb", StringComparison.OrdinalIgnoreCase))
+        {
+            if (TryParseRgbFunction(input, out var color))
+                return CreateFrozenBrush(color);
+        }
+
+        // 3. Hex без # (RGB, RRGGBB, AARRGGBB)
+        if (IsHexString(input) && (input.Length == 3 || input.Length == 6 || input.Length == 8))
+        {
+            if (TryParseHexColor("#" + input, out var color))
+                return CreateFrozenBrush(color);
+        }
+
+        // 4. Именованные цвета (Red, Blue, Green, etc.)
+        try
+        {
+            var obj = new BrushConverter().ConvertFromString(input);
+            if (obj is SolidColorBrush b)
+            {
+                if (!b.IsFrozen) b.Freeze();
+                return b;
+            }
+        }
+        catch { }
+
+        // 5. Числовой формат: r g b [a] или r,g,b[,a]
+        var parts = input.Split(new[] { ' ', ',', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 3) return null;
 
         if (!double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out var r)) return null;
@@ -65,8 +81,106 @@ public sealed class RgbaToBrushConverter : IValueConverter
         }
 
         var col = Color.FromArgb(ToByte(a), ToByte(r), ToByte(g), ToByte(b2));
-        var br = new SolidColorBrush(col);
-        br.Freeze();
-        return br;
+        return CreateFrozenBrush(col);
+    }
+
+    private static bool TryParseHexColor(string hex, out Color color)
+    {
+        color = default;
+        try
+        {
+            var h = hex.TrimStart('#');
+
+            // #RGB -> #RRGGBB
+            if (h.Length == 3)
+            {
+                h = $"{h[0]}{h[0]}{h[1]}{h[1]}{h[2]}{h[2]}";
+            }
+            // #RGBA -> #AARRGGBB (web format RGBA to WPF ARGB)
+            else if (h.Length == 4)
+            {
+                h = $"{h[3]}{h[3]}{h[0]}{h[0]}{h[1]}{h[1]}{h[2]}{h[2]}";
+            }
+
+            var obj = new BrushConverter().ConvertFromString("#" + h);
+            if (obj is SolidColorBrush b)
+            {
+                color = b.Color;
+                return true;
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    private static bool TryParseRgbFunction(string input, out Color color)
+    {
+        color = default;
+        try
+        {
+            var lower = input.ToLowerInvariant();
+            var start = lower.IndexOf('(');
+            var end = lower.LastIndexOf(')');
+            if (start < 0 || end < 0 || end <= start) return false;
+
+            var inner = input.Substring(start + 1, end - start - 1);
+            var parts = inner.Split(new[] { ',', ' ', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3) return false;
+
+            double ParseComponent(string s)
+            {
+                s = s.Trim();
+                if (s.EndsWith("%"))
+                {
+                    return double.Parse(s.TrimEnd('%'), CultureInfo.InvariantCulture) * 2.55;
+                }
+                return double.Parse(s, CultureInfo.InvariantCulture);
+            }
+
+            double ParseAlpha(string s)
+            {
+                s = s.Trim();
+                if (s.EndsWith("%"))
+                {
+                    return double.Parse(s.TrimEnd('%'), CultureInfo.InvariantCulture) / 100.0 * 255.0;
+                }
+                var val = double.Parse(s, CultureInfo.InvariantCulture);
+                return val <= 1.0 ? val * 255.0 : val;
+            }
+
+            var r = (byte)Math.Clamp(ParseComponent(parts[0]), 0, 255);
+            var g = (byte)Math.Clamp(ParseComponent(parts[1]), 0, 255);
+            var b = (byte)Math.Clamp(ParseComponent(parts[2]), 0, 255);
+            byte a = 255;
+
+            if (parts.Length >= 4)
+            {
+                a = (byte)Math.Clamp(ParseAlpha(parts[3]), 0, 255);
+            }
+
+            color = Color.FromArgb(a, r, g, b);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsHexString(string s)
+    {
+        foreach (char c in s)
+        {
+            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
+                return false;
+        }
+        return true;
+    }
+
+    private static SolidColorBrush CreateFrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
     }
 }

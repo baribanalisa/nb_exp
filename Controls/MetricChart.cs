@@ -34,6 +34,9 @@ public sealed class MetricChart : FrameworkElement
 
     private string _xUnit = "с";
 
+    private double _currentTime = double.NaN;
+    private static readonly Brush CurrentTimeLine = new SolidColorBrush(Color.FromArgb(0xCC, 0xE5, 0x39, 0x35));
+
     private const double Pad = 10;
 
     private static readonly Brush Bg = new SolidColorBrush(Color.FromRgb(0xFA, 0xFA, 0xFA));
@@ -53,13 +56,29 @@ public sealed class MetricChart : FrameworkElement
         (Line as SolidColorBrush)?.Freeze();
         (Thr as SolidColorBrush)?.Freeze();
         (FixBand as SolidColorBrush)?.Freeze();
+        (CurrentTimeLine as SolidColorBrush)?.Freeze();
     }
 
     public void Clear(string? text = null)
     {
         _series = null;
         _fixBands = null;
+        _currentTime = double.NaN;
         _emptyText = string.IsNullOrWhiteSpace(text) ? "—" : text;
+        InvalidateVisual();
+    }
+
+    public void SetCurrentTime(double time)
+    {
+        if (Math.Abs(_currentTime - time) < 0.001) return;
+        _currentTime = time;
+        InvalidateVisual();
+    }
+
+    public void ClearCurrentTime()
+    {
+        if (double.IsNaN(_currentTime)) return;
+        _currentTime = double.NaN;
         InvalidateVisual();
     }
 
@@ -208,6 +227,13 @@ public sealed class MetricChart : FrameworkElement
             var brush = new SolidColorBrush(series.Color);
             brush.Freeze();
             dc.DrawGeometry(null, new Pen(brush, 1.5), geo);
+        }
+
+        // current time marker
+        if (!double.IsNaN(_currentTime) && _currentTime >= _tMin && _currentTime <= _tMax)
+        {
+            var xCur = X(_currentTime, plot);
+            dc.DrawLine(new Pen(CurrentTimeLine, 2), new Point(xCur, plot.Top), new Point(xCur, plot.Bottom));
         }
 
         // y labels (min/max) с единицами измерения

@@ -165,7 +165,8 @@ public partial class AnalysisWindow : Window
         if (_hasKgr)
         {
             KgrChartsPanel.Visibility = Visibility.Visible;
-            KgrSpacerColumn.Width = new GridLength(14);
+            KgrSplitter.Visibility = Visibility.Visible;
+            KgrSpacerColumn.Width = new GridLength(6);
             KgrColumn.Width = new GridLength(360);
             if (ExportKgrMenuItem != null)
                 ExportKgrMenuItem.Visibility = Visibility.Visible;
@@ -173,6 +174,7 @@ public partial class AnalysisWindow : Window
         else
         {
             KgrChartsPanel.Visibility = Visibility.Collapsed;
+            KgrSplitter.Visibility = Visibility.Collapsed;
             KgrSpacerColumn.Width = new GridLength(0);
             KgrColumn.Width = new GridLength(0);
             if (ExportKgrMenuItem != null)
@@ -1005,6 +1007,136 @@ public partial class AnalysisWindow : Window
         KgrScChart.Clear(message);
         KgrHrChart.Clear(message);
         KgrPpgChart.Clear(message);
+    }
+
+    private void UpdateKgrCurrentTime(double time)
+    {
+        if (!_hasKgr) return;
+        KgrSrChart.SetCurrentTime(time);
+        KgrScChart.SetCurrentTime(time);
+        KgrHrChart.SetCurrentTime(time);
+        KgrPpgChart.SetCurrentTime(time);
+    }
+
+    private void ClearKgrCurrentTime()
+    {
+        KgrSrChart.ClearCurrentTime();
+        KgrScChart.ClearCurrentTime();
+        KgrHrChart.ClearCurrentTime();
+        KgrPpgChart.ClearCurrentTime();
+    }
+
+    private void UpdateKgrChartsForTimeRange(string stimUid, double tMin, double tMax)
+    {
+        if (string.IsNullOrWhiteSpace(stimUid))
+            return;
+
+        if (!_hasKgr && !TryResolveKgrDeviceUid(stimUid))
+        {
+            ApplyKgrPanelVisibility();
+            return;
+        }
+
+        ApplyKgrPanelVisibility();
+
+        var sources = new List<(ResultDisplayItem Result, List<GsrSample> Samples)>();
+        foreach (var result in EnumerateVisibleResults())
+        {
+            var allSamples = GetFilteredGsrSamplesForStim(result.ResultUid, stimUid);
+            if (allSamples.Count < 2) continue;
+            // Фильтруем по временному диапазону
+            var samples = allSamples.Where(s => s.TimeSec >= tMin && s.TimeSec <= tMax).ToList();
+            if (samples.Count < 2) continue;
+            sources.Add((result, samples));
+        }
+
+        if (sources.Count == 0)
+        {
+            ClearKgrCharts("Нет данных КГР для выбранного интервала");
+            return;
+        }
+
+        double chartTMin = tMin;
+        double chartTMax = tMax;
+
+        if (TryBuildMetricSeriesForRange(sources, s => s.Sr, chartTMin, chartTMax, out var srSeries, out var srMin, out var srMax))
+        {
+            var range = Math.Max(1.0, srMax - srMin);
+            KgrSrChart.SetData(srSeries, chartTMin, chartTMax, srMin - range * 0.1, srMax + range * 0.1, double.NaN,
+                "КГР: Сопротивление (SR)", null, "кОм");
+        }
+        else
+        {
+            KgrSrChart.Clear("Нет данных SR");
+        }
+
+        if (TryBuildMetricSeriesForRange(sources, s => s.Sc, chartTMin, chartTMax, out var scSeries, out var scMin, out var scMax))
+        {
+            var range = Math.Max(1.0, scMax - scMin);
+            KgrScChart.SetData(scSeries, chartTMin, chartTMax, scMin - range * 0.1, scMax + range * 0.1, double.NaN,
+                "КГР: Проводимость (SC)", null, "мкСм");
+        }
+        else
+        {
+            KgrScChart.Clear("Нет данных SC");
+        }
+
+        if (TryBuildMetricSeriesForRange(sources, s => s.Hr, chartTMin, chartTMax, out var hrSeries, out var hrMin, out var hrMax))
+        {
+            hrMin = Math.Max(0, hrMin);
+            hrMax = Math.Min(200, hrMax);
+            if (hrMax <= hrMin) hrMax = hrMin + 1;
+            KgrHrChart.SetData(hrSeries, chartTMin, chartTMax, hrMin - 10, hrMax + 10, double.NaN,
+                "Пульс (ЧСС)", null, "уд/мин");
+        }
+        else
+        {
+            KgrHrChart.Clear("Нет данных ЧСС");
+        }
+
+        if (TryBuildMetricSeriesForRange(sources, s => s.Ppg, chartTMin, chartTMax, out var ppgSeries, out var ppgMin, out var ppgMax))
+        {
+            var range = Math.Max(1.0, ppgMax - ppgMin);
+            KgrPpgChart.SetData(ppgSeries, chartTMin, chartTMax, ppgMin - range * 0.1, ppgMax + range * 0.1, double.NaN,
+                "Фотоплетизмограмма (PPG)", null, "усл.ед.");
+        }
+        else
+        {
+            KgrPpgChart.Clear("Нет данных PPG");
+        }
+
+        static bool TryBuildMetricSeriesForRange(
+            IReadOnlyList<(ResultDisplayItem Result, List<GsrSample> Samples)> sources,
+            Func<GsrSample, double> selector,
+            double tMin,
+            double tMax,
+            out List<MetricSeries> series,
+            out double min,
+            out double max)
+        {
+            series = new List<MetricSeries>(sources.Count);
+            min = double.PositiveInfinity;
+            max = double.NegativeInfinity;
+
+            foreach (var source in sources)
+            {
+                var points = new List<MetricPoint>(source.Samples.Count);
+                foreach (var sample in source.Samples)
+                {
+                    if (sample.TimeSec < tMin || sample.TimeSec > tMax) continue;
+                    var value = selector(sample);
+                    if (!double.IsFinite(value)) continue;
+                    points.Add(new MetricPoint(sample.TimeSec, value));
+                    if (value < min) min = value;
+                    if (value > max) max = value;
+                }
+
+                if (points.Count > 0)
+                    series.Add(new MetricSeries(points, source.Result.Color));
+            }
+
+            return series.Count > 0 && double.IsFinite(min) && double.IsFinite(max);
+        }
     }
 
     private List<RawGazeSample> GetRawSamplesForStim(string resultUid, string stimUid)
@@ -2102,6 +2234,20 @@ public partial class AnalysisWindow : Window
         }
 
         ApplySliceFilter();
+
+        // Пересчитываем метрики AOI при изменении временного диапазона
+        if (AoiOverlay.Visibility == Visibility.Visible && _aoiList.Count > 0)
+        {
+            RecalculateAoiMetrics();
+            AoiOverlay.SetData(_aoiList, _cachedAoiMetrics);
+            RefreshAoiGrid();
+        }
+
+        // Обновляем графики КГР для нового временного диапазона
+        if (_hasKgr && _sliceStimUid != null)
+        {
+            UpdateKgrChartsForTimeRange(_sliceStimUid, _sliceMin, _sliceMax);
+        }
     }
 
     private void SliceTimeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -3088,8 +3234,15 @@ public partial class AnalysisWindow : Window
     private void RecalculateAoiMetrics()
     {
         if (_currentStimUid == null) return;
-        
-        var fixSeriesList = BuildFixationSeriesForStim(_currentStimUid);
+
+        // Определяем временной диапазон для фильтрации
+        bool useTimeFilter = !_currentStimIsVideo && _sliceStimUid == _currentStimUid && _sliceMax > _sliceMin;
+        float tMin = useTimeFilter ? (float)_sliceMin : 0f;
+        float tMax = useTimeFilter ? (float)_sliceMax : float.MaxValue;
+
+        var fixSeriesList = useTimeFilter
+            ? BuildFixationSeriesForWindow(_currentStimUid, tMin, tMax)
+            : BuildFixationSeriesForStim(_currentStimUid);
         var metricsList = new List<AoiMetricsResult>();
 
         // Для градусной амплитуды нужны экранные координаты (px) для тех же фиксаций,
@@ -3100,6 +3253,12 @@ public partial class AnalysisWindow : Window
         {
             if (string.IsNullOrWhiteSpace(result.ResultUid)) continue;
             var (screen, stim) = EnsureFixationsForStimPaired(result.ResultUid, _currentStimUid);
+            // Применяем временной фильтр к парным фиксациям
+            if (useTimeFilter)
+            {
+                screen = SliceByStartTime(screen, tMin, tMax);
+                stim = SliceByStartTime(stim, tMin, tMax);
+            }
             pairedFix.Add((result.ResultUid, screen, stim));
         }
 
@@ -4079,10 +4238,20 @@ public partial class AnalysisWindow : Window
             // но здесь мы просто обновляем время анимации
             BeeOverlay.Visibility = Visibility.Visible;
             BeeOverlay.SetTime(_currentTime);
-            
+
             // График метрик обновляем всё равно
             UpdateMetricChart(_sliceStimUid, _currentTime - FixTimeSliceSec, _currentTime, null);
             UpdateSliceTimeUi();
+
+            // Обновляем маркер текущего времени на графиках КГР
+            if (_hasKgr && _playbackState != PlaybackState.Stop)
+            {
+                UpdateKgrCurrentTime(_currentTime);
+            }
+            else if (_hasKgr)
+            {
+                ClearKgrCurrentTime();
+            }
             return;
         }
 
@@ -4149,6 +4318,16 @@ public partial class AnalysisWindow : Window
 
         UpdateMetricChart(_sliceStimUid, tMin, tMax, visibleSeries);
         UpdateSliceTimeUi();
+
+        // Обновляем маркер текущего времени на графиках КГР при воспроизведении
+        if (_hasKgr && usePlaybackWindow)
+        {
+            UpdateKgrCurrentTime(_currentTime);
+        }
+        else if (_hasKgr)
+        {
+            ClearKgrCurrentTime();
+        }
     }
 
     private void TickSlicePlayback()
@@ -4665,24 +4844,40 @@ public partial class AnalysisWindow : Window
         color = default;
         if (string.IsNullOrWhiteSpace(rgba)) return false;
 
-        if (rgba.TrimStart().StartsWith("#"))
+        var input = rgba.Trim();
+
+        // 1. Hex с # (#RGB, #RRGGBB, #AARRGGBB)
+        if (input.StartsWith("#"))
         {
-            try
-            {
-                var obj = new BrushConverter().ConvertFromString(rgba);
-                if (obj is SolidColorBrush b)
-                {
-                    color = b.Color;
-                    return true;
-                }
-            }
-            catch
-            {
-                return false;
-            }
+            return TryParseHexColor(input, out color);
         }
 
-        var parts = rgba.Split(new[] { ' ', ',', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        // 2. rgb(r,g,b) или rgba(r,g,b,a)
+        if (input.StartsWith("rgb", StringComparison.OrdinalIgnoreCase))
+        {
+            return TryParseRgbFunction(input, out color);
+        }
+
+        // 3. Hex без # (RGB, RRGGBB, AARRGGBB)
+        if (IsHexString(input) && (input.Length == 3 || input.Length == 6 || input.Length == 8))
+        {
+            return TryParseHexColor("#" + input, out color);
+        }
+
+        // 4. Именованные цвета (Red, Blue, Green, etc.)
+        try
+        {
+            var obj = new BrushConverter().ConvertFromString(input);
+            if (obj is SolidColorBrush b)
+            {
+                color = b.Color;
+                return true;
+            }
+        }
+        catch { }
+
+        // 5. Числовой формат: r g b [a] или r,g,b[,a]
+        var parts = input.Split(new[] { ' ', ',', ';', '\t' }, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 3) return false;
 
         if (!double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out var r)) return false;
@@ -4703,6 +4898,106 @@ public partial class AnalysisWindow : Window
         }
 
         color = Color.FromArgb(ToByte(a), ToByte(r), ToByte(g), ToByte(b2));
+        return true;
+    }
+
+    private static bool TryParseHexColor(string hex, out Color color)
+    {
+        color = default;
+        try
+        {
+            var h = hex.TrimStart('#');
+
+            // #RGB -> #RRGGBB
+            if (h.Length == 3)
+            {
+                h = $"{h[0]}{h[0]}{h[1]}{h[1]}{h[2]}{h[2]}";
+            }
+            // #RGBA -> #AARRGGBB (web format RGBA to WPF ARGB)
+            else if (h.Length == 4)
+            {
+                h = $"{h[3]}{h[3]}{h[0]}{h[0]}{h[1]}{h[1]}{h[2]}{h[2]}";
+            }
+            // #RRGGBBAA -> #AARRGGBB (web format to WPF format)
+            else if (h.Length == 8 && !h.StartsWith("FF", StringComparison.OrdinalIgnoreCase))
+            {
+                // Could be RRGGBBAA or AARRGGBB, we try BrushConverter first
+            }
+
+            var obj = new BrushConverter().ConvertFromString("#" + h);
+            if (obj is SolidColorBrush b)
+            {
+                color = b.Color;
+                return true;
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    private static bool TryParseRgbFunction(string input, out Color color)
+    {
+        color = default;
+        try
+        {
+            // Remove rgb( or rgba( and closing )
+            var lower = input.ToLowerInvariant();
+            var start = lower.IndexOf('(');
+            var end = lower.LastIndexOf(')');
+            if (start < 0 || end < 0 || end <= start) return false;
+
+            var inner = input.Substring(start + 1, end - start - 1);
+            var parts = inner.Split(new[] { ',', ' ', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3) return false;
+
+            double ParseComponent(string s)
+            {
+                s = s.Trim();
+                if (s.EndsWith("%"))
+                {
+                    return double.Parse(s.TrimEnd('%'), CultureInfo.InvariantCulture) * 2.55;
+                }
+                return double.Parse(s, CultureInfo.InvariantCulture);
+            }
+
+            double ParseAlpha(string s)
+            {
+                s = s.Trim();
+                if (s.EndsWith("%"))
+                {
+                    return double.Parse(s.TrimEnd('%'), CultureInfo.InvariantCulture) / 100.0 * 255.0;
+                }
+                var val = double.Parse(s, CultureInfo.InvariantCulture);
+                // Если альфа <= 1, считаем что это 0-1 диапазон
+                return val <= 1.0 ? val * 255.0 : val;
+            }
+
+            var r = (byte)Math.Clamp(ParseComponent(parts[0]), 0, 255);
+            var g = (byte)Math.Clamp(ParseComponent(parts[1]), 0, 255);
+            var b = (byte)Math.Clamp(ParseComponent(parts[2]), 0, 255);
+            byte a = 255;
+
+            if (parts.Length >= 4)
+            {
+                a = (byte)Math.Clamp(ParseAlpha(parts[3]), 0, 255);
+            }
+
+            color = Color.FromArgb(a, r, g, b);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsHexString(string s)
+    {
+        foreach (char c in s)
+        {
+            if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
+                return false;
+        }
         return true;
     }
 

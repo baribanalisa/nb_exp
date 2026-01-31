@@ -163,11 +163,11 @@
 
     <Grid Margin="18">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="500"/>
-            <ColumnDefinition Width="14"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition x:Name="KgrSpacerColumn" Width="14"/>
-            <ColumnDefinition x:Name="KgrColumn" Width="360"/>
+            <ColumnDefinition Width="400" MinWidth="250"/>
+            <ColumnDefinition Width="6"/>
+            <ColumnDefinition Width="*" MinWidth="300"/>
+            <ColumnDefinition x:Name="KgrSpacerColumn" Width="6"/>
+            <ColumnDefinition x:Name="KgrColumn" Width="360" MinWidth="200"/>
         </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
@@ -324,21 +324,19 @@
                                 </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
 
-                            <DataGridTemplateColumn Header="Цвет" Width="140">
+                            <DataGridTemplateColumn Header="Цвет" Width="50">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Border Width="16" Height="16"
-                                                    CornerRadius="3"
-                                                    BorderThickness="1"
-                                                    BorderBrush="LightGray"
-                                                    Margin="0,0,6,0"
-                                                    Background="{Binding ColorBrush}"
-                                                    Cursor="Hand"
-                                                    MouseLeftButtonDown="ResultColorSwatch_MouseLeftButtonDown"
-                                                    Focusable="False" />
-                                            <TextBlock Text="{Binding ColorHex}" VerticalAlignment="Center"/>
-                                        </StackPanel>
+                                        <Border Width="20" Height="20"
+                                                CornerRadius="4"
+                                                BorderThickness="1"
+                                                BorderBrush="LightGray"
+                                                Background="{Binding ColorBrush}"
+                                                Cursor="Hand"
+                                                MouseLeftButtonDown="ResultColorSwatch_MouseLeftButtonDown"
+                                                Focusable="False"
+                                                HorizontalAlignment="Center"
+                                                ToolTip="{Binding ColorHex}" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -350,6 +348,14 @@
                 </DockPanel>
             </Border>
         </Grid>
+
+        <!-- GridSplitter между левой и центральной панелями -->
+        <GridSplitter Grid.Column="1" Grid.RowSpan="2"
+                      Width="6"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="Transparent"
+                      Cursor="SizeWE"/>
 
         <!-- RIGHT: preview -->
         <Border Grid.Column="2" Grid.Row="0"
@@ -775,7 +781,16 @@
             </Grid> <!-- Закрываем внутренний Grid -->
         </Border> <!-- Закрываем Border -->
 
-                <!-- RIGHT: KGR charts -->
+        <!-- GridSplitter между центральной и правой (КГР) панелями -->
+        <GridSplitter x:Name="KgrSplitter"
+                      Grid.Column="3" Grid.RowSpan="2"
+                      Width="6"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="Transparent"
+                      Cursor="SizeWE"/>
+
+        <!-- RIGHT: KGR charts -->
         <Border x:Name="KgrChartsPanel"
                 Grid.Column="4"
                 Grid.RowSpan="2"

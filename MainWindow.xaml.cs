@@ -378,7 +378,7 @@ public partial class MainWindow : Window
             var column = new DataGridTemplateColumn
             {
                 Header = "Цвет",
-                Width = 140,
+                Width = 50,
                 IsReadOnly = false,
                 CellTemplate = BuildResultColorTemplate(isEditing: false),
                 CellEditingTemplate = BuildResultColorTemplate(isEditing: true),
@@ -413,18 +413,14 @@ public partial class MainWindow : Window
 
     private DataTemplate BuildResultColorTemplate(bool isEditing)
     {
-        var root = new FrameworkElementFactory(typeof(StackPanel));
-        root.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
-        root.SetValue(StackPanel.VerticalAlignmentProperty, VerticalAlignment.Center);
-
         // Цветной квадратик
         var swatch = new FrameworkElementFactory(typeof(Border));
-        swatch.SetValue(Border.WidthProperty, 16.0);
-        swatch.SetValue(Border.HeightProperty, 16.0);
-        swatch.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+        swatch.SetValue(Border.WidthProperty, 20.0);
+        swatch.SetValue(Border.HeightProperty, 20.0);
+        swatch.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
         swatch.SetValue(Border.BorderThicknessProperty, new Thickness(1));
         swatch.SetValue(Border.BorderBrushProperty, Brushes.LightGray);
-        swatch.SetValue(Border.MarginProperty, new Thickness(0, 0, 6, 0));
+        swatch.SetValue(FrameworkElement.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
 
         // Биндинг фона
         swatch.SetBinding(Border.BackgroundProperty, new Binding("Color")
@@ -433,41 +429,15 @@ public partial class MainWindow : Window
             FallbackValue = Brushes.Transparent
         });
 
-        // === ИСПРАВЛЕНИЕ: Делаем квадратик кликабельным ВСЕГДА ===
-        // (Раньше это было внутри if (isEditing), теперь снаружи)
-        
+        // Tooltip с кодом цвета
+        swatch.SetBinding(Border.ToolTipProperty, new Binding("Color"));
+
         swatch.SetValue(Border.CursorProperty, Cursors.Hand);
-        
-        // Добавляем обработчик. 
-        // Важно: MouseLeftButtonDownEvent работает лучше, чем Click для Border
+
+        // Добавляем обработчик клика для выбора цвета
         swatch.AddHandler(Border.MouseLeftButtonDownEvent, new MouseButtonEventHandler(OnColorSwatchClick));
-        
-        // ========================================================
 
-        root.AppendChild(swatch);
-
-        FrameworkElementFactory textFactory;
-        
-        // Текстовое поле создаем только если это режим редактирования,
-        // чтобы можно было вручную вбить HEX, если очень хочется.
-        if (isEditing)
-        {
-            textFactory = new FrameworkElementFactory(typeof(TextBox));
-            textFactory.SetValue(TextBox.MinWidthProperty, 80.0);
-            textFactory.SetBinding(TextBox.TextProperty, new Binding("Color")
-            {
-                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
-            });
-        }
-        else
-        {
-            textFactory = new FrameworkElementFactory(typeof(TextBlock));
-            textFactory.SetBinding(TextBlock.TextProperty, new Binding("Color"));
-        }
-
-        root.AppendChild(textFactory);
-
-        var template = new DataTemplate { VisualTree = root };
+        var template = new DataTemplate { VisualTree = swatch };
         return template;
     }
     // Внутри MainWindow.xaml.cs
@@ -880,7 +850,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // всегда отменяем закрытие и показываем диалог подтверждения
+        // отменяем закрытие до показа диалога
         e.Cancel = true;
 
         if (_closeFlowInProgress) return;
@@ -907,7 +877,12 @@ public partial class MainWindow : Window
             _isShuttingDown = true;
             try { StopVideoUi(); } catch { }
             _closeAllowed = true;
-            try { Close(); } catch { }
+
+            // закрываем асинхронно, чтобы текущий обработчик события завершился
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try { Close(); } catch { }
+            }), System.Windows.Threading.DispatcherPriority.Normal);
             return;
         }
 
