@@ -1647,6 +1647,14 @@ public partial class AnalysisWindow : Window
 
     private void StimuliList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // Сброс рисования AOI при переключении стимула
+        if (_currentDraftAoi != null)
+        {
+            _currentDraftAoi = null;
+            AoiOverlay.GhostAoi = null;
+            AoiOverlay.InvalidateVisual();
+        }
+
         if (StimuliList.SelectedItem is not StimulusItem st)
             return;
 
