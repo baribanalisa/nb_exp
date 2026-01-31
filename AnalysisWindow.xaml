@@ -220,7 +220,7 @@
                                             Background="{Binding PreviewBackground}"/>
 
                                     <Border x:Name="ThumbClip" CornerRadius="10" ClipToBounds="True">
-                                        <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
+                                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
                                     </Border>
 
                                     <TextBlock x:Name="VideoIcon"
