@@ -880,20 +880,38 @@ public partial class MainWindow : Window
             return;
         }
 
-        // если эксперимент не идёт — закрываем как обычно
-        if (!_isRunning)
-        {
-            _isShuttingDown = true;
-            try { StopVideoUi(); } catch { }
-            return;
-        }
-
-        // эксперимент идёт: останавливаем закрытие и запускаем flow
+        // всегда отменяем закрытие и показываем диалог подтверждения
         e.Cancel = true;
 
         if (_closeFlowInProgress) return;
         _closeFlowInProgress = true;
 
+        // показываем диалог подтверждения
+        var result = MessageBox.Show(
+            "Вы действительно хотите закрыть приложение?",
+            "Подтверждение выхода",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            // пользователь отказался от закрытия
+            _closeFlowInProgress = false;
+            return;
+        }
+
+        // пользователь подтвердил выход
+        // если эксперимент не идёт — закрываем сразу
+        if (!_isRunning)
+        {
+            _isShuttingDown = true;
+            try { StopVideoUi(); } catch { }
+            _closeAllowed = true;
+            try { Close(); } catch { }
+            return;
+        }
+
+        // эксперимент идёт: запускаем flow с сохранением результатов
         _ = CloseWithSavePromptAsync();
     }
 
