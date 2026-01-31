@@ -194,6 +194,7 @@
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                         <TextBlock Text="Стимулы" FontSize="16" FontWeight="SemiBold"/>
                         <TextBlock x:Name="ResultInfoText"
+                                   Visibility="Collapsed"
                                    Margin="0,4,0,0"
                                    Foreground="#88000000"
                                    FontSize="12"
@@ -384,18 +385,6 @@
                         <TabItem Header="Области интереса" Style="{StaticResource TopTabItemStyle}"/>
                     </TabControl>
 
-                    <!-- Кнопка экспорта данных эксперимента -->
-                    <Button x:Name="ExportBtn"
-                            Grid.Column="2"
-                            Style="{StaticResource PillButtonStyle}"
-                            VerticalAlignment="Center"
-                            Padding="16,8"
-                            Click="ExportBtn_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0"/>
-                            <TextBlock Text="Экспорт"/>
-                        </StackPanel>
-                    </Button>
                 </Grid>
 
                 <!-- AnalysisWindow.xaml -->
@@ -550,9 +539,9 @@
                             <DataGridTextColumn Header="Ср. длит. фикс. (с)" Binding="{Binding AvgFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="120"/>
                             
                             <DataGridTextColumn Header="Саккад (N)" Binding="{Binding SaccadeCount}" IsReadOnly="True" Width="80"/>
-                            <DataGridTextColumn Header="Ср. ампл. саккад (пкс)" Binding="{Binding AvgSaccadeAmplitude, StringFormat=F1}" IsReadOnly="True" Width="130"/>
-                            
-                            <DataGridTextColumn Header="Путь (пкс)" Binding="{Binding ScanpathLength, StringFormat=F0}" IsReadOnly="True" Width="80"/>
+                            <DataGridTextColumn Header="Ср. ампл. саккад (°)" Binding="{Binding AvgSaccadeAmplitudeDeg, StringFormat=F2}" IsReadOnly="True" Width="130"/>
+
+                            <DataGridTextColumn Header="Путь (°)" Binding="{Binding ScanpathLengthDeg, StringFormat=F2}" IsReadOnly="True" Width="80"/>
                             <DataGridTextColumn Header="Площадь (%)" Binding="{Binding AreaRatio, StringFormat=F1}" IsReadOnly="True" Width="90"/>
 
                             <!-- Кнопка удаления -->
@@ -746,27 +735,39 @@
 
                 <!-- ПРАВЫЕ КНОПКИ -->
                 <Grid Grid.Column="4" VerticalAlignment="Center">
-                    <!-- кнопка настроек отображения -->
-                    <Button x:Name="VisualizationSettingsBtn"
+                    <!-- кнопка экспорта с выпадающим меню -->
+                    <Button x:Name="ExportMenuBtn"
                             Style="{StaticResource PillButtonStyle}"
-                            Width="140"
+                            Width="120"
                             Padding="14,0"
-                            Click="VisualizationSettingsBtn_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE790;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0"/>
-                            <TextBlock Text="Отображение"/>
-                        </StackPanel>
-                    </Button>
-                    <!-- Новая кнопка экспорта (видна только в режиме AOI) -->
-                    <Button x:Name="ExportAoiBtn"
-                            Style="{StaticResource PillButtonStyle}"
-                            Width="140"
-                            Padding="14,0"
-                            Click="ExportAoiCsv_Click"
-                            Visibility="Collapsed">
+                            Click="ExportMenuBtn_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="ExportContextMenu">
+                                <MenuItem Header="Экспорт визуализации" Click="ExportVisualization_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Экспорт областей интереса" Click="ExportAoiCsv_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Экспорт статистики" Click="ExportStatistics_Click">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="ExportKgrMenuItem" Header="Экспорт данных КГР" Click="ExportKgr_Click" Visibility="Collapsed">
+                                    <MenuItem.Icon>
+                                        <TextBlock Text="&#xE95A;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </Button.ContextMenu>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0"/>
-                            <TextBlock Text="Экспорт CSV"/>
+                            <TextBlock Text="Экспорт"/>
                         </StackPanel>
                     </Button>
                 </Grid>

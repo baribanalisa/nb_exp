@@ -167,12 +167,16 @@ public partial class AnalysisWindow : Window
             KgrChartsPanel.Visibility = Visibility.Visible;
             KgrSpacerColumn.Width = new GridLength(14);
             KgrColumn.Width = new GridLength(360);
+            if (ExportKgrMenuItem != null)
+                ExportKgrMenuItem.Visibility = Visibility.Visible;
         }
         else
         {
             KgrChartsPanel.Visibility = Visibility.Collapsed;
             KgrSpacerColumn.Width = new GridLength(0);
             KgrColumn.Width = new GridLength(0);
+            if (ExportKgrMenuItem != null)
+                ExportKgrMenuItem.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -1703,36 +1707,6 @@ public partial class AnalysisWindow : Window
         }
     }
 
-    private void VisualizationSettingsBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var win = new AnalysisSettingsWindow(_detectSettings, _visualSettings, initialTab: 1)
-        {
-            Owner = this,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        };
-
-        if (win.ShowDialog() == true)
-        {
-            _detectSettings = win.Settings;
-            _visualSettings = win.VisualizationSettings;
-
-            _fixCache.Clear();
-            _cachedBeeSeries = null;
-            _stimDurationCache.Clear();
-            _rawCache.Clear();
-            _vizCache.Clear(); // Clear viz cache to apply new heatmap settings
-            _gsrFilteredCache.Clear();
-
-            ApplyVisualizationSettings();
-            AppConfigManager.SaveAnalysisVisualizationSettings(_visualSettings);
-            RefreshCurrentFixations();
-
-            if (_currentStimUid != null)
-                UpdateKgrChartsForStim(_currentStimUid);
-
-        }
-    }
-
     private void RefreshCurrentFixations()
     {
         if (StimuliList.SelectedItem is not StimulusItem st)
@@ -2783,15 +2757,10 @@ public partial class AnalysisWindow : Window
         // 4. Панель инструментов AOI
         if (AoiToolbar != null) AoiToolbar.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
 
-        // 5. Кнопка экспорта (видна только в AOI)
-        if (ExportAoiBtn != null) ExportAoiBtn.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
-
-        // 6. Управление кнопками Плей/Пауза и Настройки (скрываем ТОЛЬКО в AOI)
+        // 5. Управление кнопками Плей/Пауза (скрываем в AOI)
         Visibility controlsVisibility = isAoi ? Visibility.Collapsed : Visibility.Visible;
 
-        // Для кнопок Видео (Play/Pause) - они лежат внутри VideoTimelinePanel.
-        // Но вы просили скрыть именно кнопки, оставив слайдер.
-        // Слайдер (TimeSlider) мы не трогаем, а вот кнопку PlayPauseBtn скрываем.
+        // Для кнопок Видео (Play/Pause)
         if (PlayPauseBtn != null) PlayPauseBtn.Visibility = controlsVisibility;
 
         // Для кнопок Slice (картинки)
@@ -2801,8 +2770,6 @@ public partial class AnalysisWindow : Window
         if (SliceTimeSlider != null) SliceTimeSlider.Visibility = controlsVisibility;
 
         if (SliceTimeText != null) SliceTimeText.Visibility = controlsVisibility;
-        // Кнопка настроек отображения
-        if (VisualizationSettingsBtn != null) VisualizationSettingsBtn.Visibility = controlsVisibility;
 
         // Загрузка данных
         if (isAoi && _currentStimUid != null)
@@ -3155,7 +3122,6 @@ public partial class AnalysisWindow : Window
             
             int saccadeCount = 0;
             double totalSaccadeAmp = 0;
-            double totalSaccadeAmpDeg = 0;
             double scanpath = 0;
 
             // Проходим по всем сериям (испытуемым)
@@ -3244,13 +3210,14 @@ public partial class AnalysisWindow : Window
             if (saccadeCount > 0)
                 m.AverageSaccadeAmplitude = totalSaccadeAmp / saccadeCount;
 
-            // Вычисляем амплитуду саккад в градусах
+            // Вычисляем амплитуду саккад и путь в градусах
             if (saccadeCount > 0)
             {
-                totalSaccadeAmpDeg = CalculateSaccadeAmplitudeInDegreesPaired(pairedFix, aoi, w, h);
-                m.AverageSaccadeAmplitudeDeg = totalSaccadeAmpDeg / saccadeCount;
+                var (totalAmpDeg, totalPathDeg) = CalculateSaccadeMetricsInDegreesPaired(pairedFix, aoi, w, h);
+                m.AverageSaccadeAmplitudeDeg = totalAmpDeg / saccadeCount;
+                m.ScanpathLengthDeg = totalPathDeg;
             }
-                
+
             m.ScanpathLength = scanpath;
             
             metricsList.Add(m);
@@ -3259,13 +3226,18 @@ public partial class AnalysisWindow : Window
         _cachedAoiMetrics = metricsList.ToArray();
     }
 
-    private double CalculateSaccadeAmplitudeInDegreesPaired(
+    /// <summary>
+    /// Вычисляет суммарную амплитуду саккад и длину пути в градусах визуального угла.
+    /// </summary>
+    /// <returns>(totalAmplitudeDeg, totalScanpathDeg)</returns>
+    private (double TotalAmpDeg, double TotalPathDeg) CalculateSaccadeMetricsInDegreesPaired(
         List<(string ResultUid, List<Fixation> Screen, List<Fixation> Stim)> pairedFix,
         AoiElement aoi, double w, double h)
     {
-        if (_currentStimUid == null) return 0;
+        if (_currentStimUid == null) return (0, 0);
 
         double totalAmpDeg = 0;
+        double totalPathDeg = 0;
 
         foreach (var (resultUid, fixScreen, fixStim) in pairedFix)
         {
@@ -3286,6 +3258,7 @@ public partial class AnalysisWindow : Window
 
             Fixation? prevScreen = null;
             Fixation? prevStim = null;
+            bool prevInAoi = false;
 
             for (int k = 0; k < fixStim.Count; k++)
             {
@@ -3312,16 +3285,19 @@ public partial class AnalysisWindow : Window
                         double angRad = Math.Atan2(dMm, distMm);
                         double angDeg = angRad * (180.0 / Math.PI);
                         if (!double.IsFinite(angDeg)) angDeg = 0;
+
                         totalAmpDeg += angDeg;
+                        totalPathDeg += angDeg;
                     }
                 }
 
                 prevStim = stimFix;
                 prevScreen = screenFix;
+                prevInAoi = inAoi;
             }
         }
 
-        return totalAmpDeg;
+        return (totalAmpDeg, totalPathDeg);
     }
 
     private float GetDistanceForFixation(List<RawGazeSample> raw, Fixation fix)
@@ -3346,31 +3322,324 @@ public partial class AnalysisWindow : Window
         return (float)(sum / cnt);
     }
 
-    // --- ЭКСПОРТ CSV ---
+    // --- ЭКСПОРТ ---
+
+    private string GetCurrentStimName()
+    {
+        if (StimuliList.SelectedItem is StimulusItem st)
+            return st.Title;
+        return _currentStimUid ?? "export";
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var result = new System.Text.StringBuilder(name.Length);
+        foreach (var c in name)
+        {
+            result.Append(invalid.Contains(c) ? '_' : c);
+        }
+        return result.ToString();
+    }
+
+    private static string GetExportFileName(string stimName, string type, string extension)
+    {
+        var safeName = SanitizeFileName(stimName);
+        var dateStr = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        return $"{safeName}_{type}_{dateStr}.{extension}";
+    }
 
     private void ExportAoiCsv_Click(object sender, RoutedEventArgs e)
     {
         if (_cachedAoiMetrics.Length == 0) return;
 
-        var sfd = new Microsoft.Win32.SaveFileDialog { 
-            Filter = "CSV|*.csv", 
-            FileName = $"{_currentStimUid}_aoi_stats.csv" 
+        var sfd = new Microsoft.Win32.SaveFileDialog {
+            Filter = "CSV|*.csv",
+            FileName = GetExportFileName(GetCurrentStimName(), "aoi", "csv")
         };
-        
+
         if (sfd.ShowDialog() == true)
         {
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("AOI Name;Fixation Count;Dwell Time (s);Time to First Fixation (s);Avg Fix Duration (s);Revisits;Fixations Before First;First Fixation Duration (s);Saccade Count;Avg Saccade Amplitude (px);Avg Saccade Amplitude (deg);Scanpath Length (px);Area Ratio (%)");
-            
+            sb.AppendLine("AOI Name;Fixation Count;Dwell Time (s);Time to First Fixation (s);Avg Fix Duration (s);Revisits;Fixations Before First;First Fixation Duration (s);Saccade Count;Avg Saccade Amplitude (deg);Scanpath Length (deg);Area Ratio (%)");
+
             foreach (var m in _cachedAoiMetrics)
             {
-                sb.AppendLine($"{m.AoiName};{m.FixationCount};{m.TotalDwellTime:F3};{m.TimeToFirstFixation:F3};{m.AverageFixationDuration:F3};{m.RevisitCount};{m.FixationsBeforeFirst};{m.FirstFixationDuration:F3};{m.SaccadeCount};{m.AverageSaccadeAmplitude:F2};{m.AverageSaccadeAmplitudeDeg:F2};{m.ScanpathLength:F2};{(m.AreaRatio * 100):F2}");
+                sb.AppendLine($"{m.AoiName};{m.FixationCount};{m.TotalDwellTime:F3};{m.TimeToFirstFixation:F3};{m.AverageFixationDuration:F3};{m.RevisitCount};{m.FixationsBeforeFirst};{m.FirstFixationDuration:F3};{m.SaccadeCount};{m.AverageSaccadeAmplitudeDeg:F2};{m.ScanpathLengthDeg:F2};{(m.AreaRatio * 100):F2}");
             }
             
             File.WriteAllText(sfd.FileName, sb.ToString(), System.Text.Encoding.UTF8);
             MessageBox.Show("Экспорт завершен");
         }
     }
+
+    private void ExportMenuBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.ContextMenu != null)
+        {
+            btn.ContextMenu.PlacementTarget = btn;
+            btn.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            btn.ContextMenu.IsOpen = true;
+        }
+    }
+
+    private void ExportVisualization_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (ScreenCanvas == null || ScreenCanvas.ActualWidth <= 0 || ScreenCanvas.ActualHeight <= 0)
+            {
+                MessageBox.Show("Нет визуализации для экспорта", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var tabIndex = VisualizationModeTabs?.SelectedIndex ?? 0;
+            string modeName = tabIndex switch
+            {
+                0 => "gaze",
+                1 => "heatmap",
+                2 => "beeswarm",
+                3 => "aoi",
+                _ => "visualization"
+            };
+
+            var sfd = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter = "PNG Image|*.png",
+                FileName = GetExportFileName(GetCurrentStimName(), modeName, "png")
+            };
+
+            if (sfd.ShowDialog() != true)
+                return;
+
+            // Рендерим Canvas в битмап
+            double dpi = 96;
+            var width = (int)ScreenCanvas.ActualWidth;
+            var height = (int)ScreenCanvas.ActualHeight;
+
+            var renderBitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                width, height, dpi, dpi, System.Windows.Media.PixelFormats.Pbgra32);
+
+            renderBitmap.Render(ScreenCanvas);
+
+            // Сохраняем как PNG
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(renderBitmap));
+
+            using (var stream = File.Create(sfd.FileName))
+            {
+                encoder.Save(stream);
+            }
+
+            MessageBox.Show($"Визуализация сохранена:\n{sfd.FileName}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка при экспорте визуализации: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportStatistics_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = new WinForms.FolderBrowserDialog
+            {
+                Description = "Выберите папку для экспорта данных",
+                UseDescriptionForTitle = true,
+                ShowNewFolderButton = true
+            };
+
+            if (dialog.ShowDialog() != WinForms.DialogResult.OK)
+                return;
+
+            var outputDir = dialog.SelectedPath;
+            if (string.IsNullOrWhiteSpace(outputDir))
+                return;
+
+            ExportExperimentData(outputDir);
+            MessageBox.Show($"Экспорт завершён!\n\nФайлы сохранены в:\n{outputDir}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка при экспорте: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportKgr_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!_hasKgr)
+            {
+                MessageBox.Show("Нет данных КГР для экспорта", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_currentStimUid))
+            {
+                MessageBox.Show("Не выбран стимул", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var stimName = GetCurrentStimName();
+            var sfd = new Microsoft.Win32.SaveFileDialog
+            {
+                Filter = "CSV|*.csv",
+                FileName = GetExportFileName(stimName, "kgr", "csv")
+            };
+
+            if (sfd.ShowDialog() != true)
+                return;
+
+            ExportKgrData(sfd.FileName);
+            MessageBox.Show($"Данные КГР экспортированы:\n{sfd.FileName}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка при экспорте КГР: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportKgrData(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(_currentStimUid)) return;
+
+        using var writer = new StreamWriter(filePath, false, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        var exportDate = DateTime.Now.ToString("dd.MM.yyyy HH:mm:ss");
+        var visibleResults = EnumerateVisibleResults().ToList();
+
+        // Получаем размеры стимула для проверки AOI
+        double stimW = 1, stimH = 1;
+        if (StimuliList.SelectedItem is StimulusItem st && st.FilePath != null)
+        {
+            try
+            {
+                var bmp = new System.Windows.Media.Imaging.BitmapImage(new Uri(st.FilePath));
+                stimW = bmp.PixelWidth;
+                stimH = bmp.PixelHeight;
+            }
+            catch { }
+        }
+
+        foreach (var result in visibleResults)
+        {
+            var samples = ReadGsrSamplesForStim(result.ResultUid, _currentStimUid);
+            if (samples.Count == 0) continue;
+
+            // Вычисляем визиты в AOI для этого испытуемого
+            var aoiVisits = ComputeAoiVisitsForExport(result.ResultUid, _currentStimUid, stimW, stimH);
+
+            // Заголовок блока: дата экспорта
+            writer.WriteLine(exportDate);
+
+            // Заголовок с именами каналов
+            writer.WriteLine("TIME;GSR_HR;GSR_SR;GSR_SC;GSR_PPG");
+
+            // Данные
+            foreach (var s in samples)
+            {
+                var timeStr = s.TimeSec.ToString(CultureInfo.InvariantCulture);
+                var hrStr = double.IsFinite(s.Hr) ? s.Hr.ToString(CultureInfo.InvariantCulture) : "";
+                var srStr = double.IsFinite(s.Sr) ? s.Sr.ToString(CultureInfo.InvariantCulture) : "";
+                var scStr = double.IsFinite(s.Sc) ? s.Sc.ToString(CultureInfo.InvariantCulture) : "";
+                var ppgStr = double.IsFinite(s.Ppg) ? s.Ppg.ToString(CultureInfo.InvariantCulture) : "";
+
+                var line = $"{timeStr};{hrStr};{srStr};{scStr};{ppgStr}";
+
+                // Проверяем, есть ли визит в AOI, который начинается в этот момент
+                var visit = aoiVisits.FirstOrDefault(v =>
+                    Math.Abs(v.EntryTime - s.TimeSec) < 0.01 ||
+                    (v.EntryTime <= s.TimeSec && v.EntryTime + 0.01 > s.TimeSec));
+
+                if (visit != null)
+                {
+                    aoiVisits.Remove(visit);
+                    line += $";{visit.AoiName};{visit.EntryTime.ToString(CultureInfo.InvariantCulture)};{visit.DwellTime.ToString(CultureInfo.InvariantCulture)}";
+                }
+
+                writer.WriteLine(line);
+            }
+        }
+    }
+
+    private sealed class AoiVisitInfo
+    {
+        public string AoiName { get; set; } = "";
+        public double EntryTime { get; set; }
+        public double DwellTime { get; set; }
+    }
+
+    private List<AoiVisitInfo> ComputeAoiVisitsForExport(string resultUid, string stimUid, double stimW, double stimH)
+    {
+        var visits = new List<AoiVisitInfo>();
+
+        if (_aoiList.Count == 0) return visits;
+
+        var (_, fixStim) = EnsureFixationsForStimPaired(resultUid, stimUid);
+        if (fixStim.Count == 0) return visits;
+
+        foreach (var aoi in _aoiList)
+        {
+            bool wasIn = false;
+            double entryTime = 0;
+            double dwellTime = 0;
+
+            foreach (var fix in fixStim)
+            {
+                Point pt = new Point(fix.Xpx, fix.Ypx);
+                bool inAoi = AoiGeometry.IsPointInAoi(pt, aoi, stimW, stimH);
+
+                if (inAoi)
+                {
+                    if (!wasIn)
+                    {
+                        // Вход в AOI
+                        entryTime = fix.StartSec;
+                        dwellTime = fix.DurSec;
+                        wasIn = true;
+                    }
+                    else
+                    {
+                        // Продолжаем находиться в AOI
+                        dwellTime += fix.DurSec;
+                    }
+                }
+                else
+                {
+                    if (wasIn)
+                    {
+                        // Выход из AOI - записываем визит
+                        visits.Add(new AoiVisitInfo
+                        {
+                            AoiName = aoi.Name,
+                            EntryTime = entryTime,
+                            DwellTime = dwellTime
+                        });
+                        wasIn = false;
+                    }
+                }
+            }
+
+            // Если закончили внутри AOI
+            if (wasIn)
+            {
+                visits.Add(new AoiVisitInfo
+                {
+                    AoiName = aoi.Name,
+                    EntryTime = entryTime,
+                    DwellTime = dwellTime
+                });
+            }
+        }
+
+        // Сортируем по времени входа
+        visits.Sort((a, b) => a.EntryTime.CompareTo(b.EntryTime));
+
+        return visits;
+    }
+
     private void UpdateMetricChart(string stimUid, double tMin, double tMax, IReadOnlyList<FixationSeries>? visibleFixSeries = null)
     {
         if (tMax <= tMin) tMax = tMin + 1e-6;
@@ -4429,33 +4698,6 @@ public partial class AnalysisWindow : Window
         return true;
     }
 
-    private void ExportBtn_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var dialog = new WinForms.FolderBrowserDialog
-            {
-                Description = "Выберите папку для экспорта данных",
-                UseDescriptionForTitle = true,
-                ShowNewFolderButton = true
-            };
-
-            if (dialog.ShowDialog() != WinForms.DialogResult.OK)
-                return;
-
-            var outputDir = dialog.SelectedPath;
-            if (string.IsNullOrWhiteSpace(outputDir))
-                return;
-
-            ExportExperimentData(outputDir);
-            MessageBox.Show($"Экспорт завершён!\n\nФайлы сохранены в:\n{outputDir}", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Ошибка при экспорте: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
     private void ExportExperimentData(string outputDir)
     {
         _exp ??= JsonSerializer.Deserialize<ExperimentFile>(
@@ -4467,9 +4709,9 @@ public partial class AnalysisWindow : Window
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_primaryResultUid))
+        if (string.IsNullOrWhiteSpace(_currentStimUid))
         {
-            MessageBox.Show("Не выбран результат для экспорта", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Не выбран стимул для экспорта", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -4480,28 +4722,38 @@ public partial class AnalysisWindow : Window
             return;
         }
 
-        var resultUid = _primaryResultUid;
+        var visibleResults = EnumerateVisibleResults().ToList();
+        if (visibleResults.Count == 0)
+        {
+            MessageBox.Show("Нет выбранных испытуемых для экспорта", "Экспорт", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
 
-        ExportRawGazeData(resultUid, trackerUid, outputDir);
-        ExportStatistics(resultUid, outputDir);
+        var stimName = GetCurrentStimName();
+
+        ExportRawGazeData(visibleResults, trackerUid, outputDir, stimName);
+        ExportStatistics(visibleResults, outputDir, stimName);
     }
 
-    private void ExportRawGazeData(string resultUid, string trackerUid, string outputDir)
+    private void ExportRawGazeData(List<ResultDisplayItem> results, string trackerUid, string outputDir, string stimName)
     {
-        var csvPath = Path.Combine(outputDir, "gaze_raw.csv");
+        if (string.IsNullOrWhiteSpace(_currentStimUid)) return;
+
+        var csvPath = Path.Combine(outputDir, GetExportFileName(stimName, "gaze_raw", "csv"));
         using var writer = new StreamWriter(csvPath, false, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
-        writer.WriteLine("stimulus,time,valid,x,y,z,lp,rp,lopen,ropen");
+        var exportDate = DateTime.Now.ToString("yyyy-MM-dd");
 
-        if (_exp == null || _exp.Stimuls == null)
-            return;
-
-        foreach (var stim in _exp.Stimuls)
+        foreach (var result in results)
         {
-            if (stim.Kind == 0) continue;
+            var resultUid = result.ResultUid;
 
-            var binPath = Path.Combine(_expDir, "results", resultUid, stim.Uid, trackerUid);
+            var binPath = Path.Combine(_expDir, "results", resultUid, _currentStimUid, trackerUid);
             if (!File.Exists(binPath)) continue;
+
+            // Заголовок блока: имя испытуемого и дата
+            writer.WriteLine($"{result.Name},{exportDate}");
+            writer.WriteLine("time,valid,x,y,z,lp,rp,lopen,ropen");
 
             using var fs = new FileStream(binPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             byte[] buf = ArrayPool<byte>.Shared.Rent(TrackerData.Size);
@@ -4595,7 +4847,7 @@ public partial class AnalysisWindow : Window
                     int validInt = (lGood || rGood) ? 1 : 0;
 
                     string timeStr = float.IsFinite(timeSec) ? timeSec.ToString("F6", CultureInfo.InvariantCulture) : Nan;
-                    writer.WriteLine($"{stim.Uid},{timeStr},{validInt},{xStr},{yStr},{zStr},{lpStr},{rpStr},{lopenStr},{ropenStr}");
+                    writer.WriteLine($"{timeStr},{validInt},{xStr},{yStr},{zStr},{lpStr},{rpStr},{lopenStr},{ropenStr}");
                 }
             }
             finally
@@ -4626,40 +4878,44 @@ public partial class AnalysisWindow : Window
         return $"\"{value.Replace("\"", "\"\"")}\"";
         }
 
-        private void ExportStatistics(string resultUid, string outputDir)
+        private void ExportStatistics(List<ResultDisplayItem> results, string outputDir, string stimName)
         {
-        var csvPath = Path.Combine(outputDir, "stats.csv");
+        if (string.IsNullOrWhiteSpace(_currentStimUid)) return;
+
+        var csvPath = Path.Combine(outputDir, GetExportFileName(stimName, "stats", "csv"));
         using var writer = new StreamWriter(csvPath, false, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
 
-        writer.WriteLine("stimulus,duration_sec,time_to_first_fixation_sec,avg_fixation_duration_sec,fixation_count,avg_saccade_amplitude_px,avg_saccade_amplitude_deg,total_saccade_count");
+        writer.WriteLine("stimulus,subjects_count,avg_duration_sec,avg_time_to_first_fixation_sec,avg_fixation_duration_sec,total_fixation_count,avg_saccade_amplitude_deg,total_saccade_count");
 
-        if (_exp == null || _exp.Stimuls == null)
-            return;
+        const string Nan = "nan";
 
-        foreach (var stim in _exp.Stimuls)
+        // Собираем данные по всем испытуемым для агрегации
+        var allDurations = new List<double>();
+        var allTimeToFirstFix = new List<float>();
+        var allFixDurations = new List<float>();
+        int totalFixCount = 0;
+        var allSaccadeAngles = new List<float>();
+        int totalSaccadeCount = 0;
+
+        foreach (var result in results)
         {
-            if (stim.Kind == 0) continue;
+            var resultUid = result.ResultUid;
 
-            var stimulusTitle = CsvEscape(ResolveStimulusTitle(stim));
+            var (wPx, hPx, wMm, hMm) = ReadStimulusScreenInfo(resultUid, _currentStimUid);
 
-            var (wPx, hPx, wMm, hMm) = ReadStimulusScreenInfo(resultUid, stim.Uid);
+            var duration = GetStimTotalSec(resultUid, _currentStimUid);
+            allDurations.Add(duration);
 
-            var duration = GetStimTotalSec(resultUid, stim.Uid);
-            var (fixScreen, fixStim) = EnsureFixationsForStimPaired(resultUid, stim.Uid);
-
-            const string Nan = "nan";
+            var (fixScreen, fixStim) = EnsureFixationsForStimPaired(resultUid, _currentStimUid);
 
             if (fixStim.Count == 0 || fixScreen.Count == 0 || fixStim.Count != fixScreen.Count)
-            {
-                writer.WriteLine($"{stimulusTitle},{duration.ToString("F3", CultureInfo.InvariantCulture)},{Nan},{Nan},0,{Nan},{Nan},0");
                 continue;
-            }
 
-            var timeToFirstFix = fixStim[0].StartSec;
-            var avgFixDuration = fixStim.Average(f => f.DurSec);
-            var fixCount = fixStim.Count;
+            allTimeToFirstFix.Add(fixStim[0].StartSec);
+            foreach (var f in fixStim)
+                allFixDurations.Add(f.DurSec);
+            totalFixCount += fixStim.Count;
 
-            var saccades = new List<(float distance, float angleDeg)>();
             for (int i = 1; i < fixStim.Count; i++)
             {
                 var f1Stim = fixStim[i - 1];
@@ -4667,14 +4923,11 @@ public partial class AnalysisWindow : Window
                 var f1Screen = fixScreen[i - 1];
                 var f2Screen = fixScreen[i];
 
-                float dxStim = f2Stim.Xpx - f1Stim.Xpx;
-                float dyStim = f2Stim.Ypx - f1Stim.Ypx;
-                float distPx = (float)Math.Sqrt(dxStim * dxStim + dyStim * dyStim);
+                totalSaccadeCount++;
 
-                float angleDeg = float.NaN;
                 if (wPx > 0 && hPx > 0 && wMm > 0 && hMm > 0)
                 {
-                    var raw = GetRawSamplesForStim(resultUid, stim.Uid);
+                    var raw = GetRawSamplesForStim(resultUid, _currentStimUid);
                     var samplesInRange = raw.Where(s => s.Valid && s.TimeSec >= f1Stim.StartSec && s.TimeSec <= (f2Stim.StartSec + f2Stim.DurSec)).ToList();
 
                     if (samplesInRange.Count > 0)
@@ -4683,7 +4936,6 @@ public partial class AnalysisWindow : Window
                             .Select(s => s.DistanceM).DefaultIfEmpty(0).Average();
                         if (avgDist > 0)
                         {
-                            // В градусах считаем по экранным пикселям, чтобы mmPerPx соответствовал экрану.
                             float dx = f2Screen.Xpx - f1Screen.Xpx;
                             float dy = f2Screen.Ypx - f1Screen.Ypx;
 
@@ -4693,23 +4945,28 @@ public partial class AnalysisWindow : Window
                             float dyMm = dy * mmPerPxY;
                             float dMm = (float)Math.Sqrt(dxMm * dxMm + dyMm * dyMm);
                             float angRad = (float)Math.Atan2(dMm, avgDist * 1000f);
-                            angleDeg = angRad * 57.2957795f;
+                            float angleDeg = angRad * 57.2957795f;
+                            if (float.IsFinite(angleDeg))
+                                allSaccadeAngles.Add(angleDeg);
                         }
                     }
                 }
-
-                saccades.Add((distPx, angleDeg));
             }
+        }
 
-            var avgSaccadeDistPx = saccades.Count > 0 ? saccades.Average(s => s.distance) : float.NaN;
-            var avgSaccadeAngleDeg = saccades.Count > 0 ? saccades.Where(s => !float.IsNaN(s.angleDeg)).Select(s => s.angleDeg).DefaultIfEmpty(float.NaN).Average() : float.NaN;
-            var saccadeCount = saccades.Count;
+        // Вычисляем агрегированные значения
+        int subjectsCount = results.Count;
+        double avgDuration = allDurations.Count > 0 ? allDurations.Average() : 0;
+        double avgTTFF = allTimeToFirstFix.Count > 0 ? allTimeToFirstFix.Average() : float.NaN;
+        double avgFixDur = allFixDurations.Count > 0 ? allFixDurations.Average() : float.NaN;
+        double avgSaccadeAmp = allSaccadeAngles.Count > 0 ? allSaccadeAngles.Average() : float.NaN;
 
-            string avgSaccadePxStr = float.IsNaN(avgSaccadeDistPx) ? Nan : avgSaccadeDistPx.ToString("F2", CultureInfo.InvariantCulture);
-            string avgSaccadeDegStr = float.IsNaN(avgSaccadeAngleDeg) ? Nan : avgSaccadeAngleDeg.ToString("F2", CultureInfo.InvariantCulture);
+        string avgDurStr = avgDuration.ToString("F3", CultureInfo.InvariantCulture);
+        string avgTTFFStr = double.IsNaN(avgTTFF) ? Nan : avgTTFF.ToString("F3", CultureInfo.InvariantCulture);
+        string avgFixDurStr = double.IsNaN(avgFixDur) ? Nan : avgFixDur.ToString("F3", CultureInfo.InvariantCulture);
+        string avgSaccadeAmpStr = double.IsNaN(avgSaccadeAmp) ? Nan : avgSaccadeAmp.ToString("F2", CultureInfo.InvariantCulture);
 
-            writer.WriteLine($"{stimulusTitle},{duration.ToString("F3", CultureInfo.InvariantCulture)},{timeToFirstFix.ToString("F3", CultureInfo.InvariantCulture)},{avgFixDuration.ToString("F3", CultureInfo.InvariantCulture)},{fixCount},{avgSaccadePxStr},{avgSaccadeDegStr},{saccadeCount}");
-            }
+        writer.WriteLine($"{CsvEscape(stimName)},{subjectsCount},{avgDurStr},{avgTTFFStr},{avgFixDurStr},{totalFixCount},{avgSaccadeAmpStr},{totalSaccadeCount}");
             }
 
             private double GetStimTotalSec(string resultUid, string stimUid)

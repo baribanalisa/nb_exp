@@ -71,6 +71,7 @@ public class AoiMetricsResult
     public double AverageSaccadeAmplitude { get; set; } // Средняя амплитуда саккад (в px)
     public double AverageSaccadeAmplitudeDeg { get; set; } // Средняя амплитуда саккад (в градусах)
     public double ScanpathLength { get; set; }          // Общая длина пути (px)
+    public double ScanpathLengthDeg { get; set; }       // Общая длина пути (в градусах)
     public double AreaRatio { get; set; }               // % площади (AOI / Стимул)
 }
 
@@ -109,6 +110,7 @@ public class AoiDisplayItem : System.ComponentModel.INotifyPropertyChanged
     public double AvgSaccadeAmplitude => _metrics?.AverageSaccadeAmplitude ?? 0;
     public double AvgSaccadeAmplitudeDeg => _metrics?.AverageSaccadeAmplitudeDeg ?? 0;
     public double ScanpathLength => _metrics?.ScanpathLength ?? 0;
+    public double ScanpathLengthDeg => _metrics?.ScanpathLengthDeg ?? 0;
     public double AreaRatio => (_metrics?.AreaRatio ?? 0) * 100.0; // В процентах
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
