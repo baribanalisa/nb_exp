@@ -126,6 +126,12 @@ public partial class AnalysisWindow : Window
     private AoiElement? _currentDraftAoi = null; // AOI, который рисуем прямо сейчас
     private List<AoiElement> _aoiList = new();
     private AoiMetricsResult[] _cachedAoiMetrics = Array.Empty<AoiMetricsResult>();
+
+    // Text Analysis
+    private bool _isTextAnalysisMode = false;
+    private TextLayoutResult? _currentTextLayout;
+    private ReadingAnalysisResult? _currentReadingAnalysis;
+    private readonly Dictionary<string, TextLayoutResult> _textLayoutCache = new();
     private static readonly JsonSerializerOptions _jsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -2877,19 +2883,26 @@ public partial class AnalysisWindow : Window
     private void UpdateAoiMode(int tabIndex)
     {
         bool isAoi = (tabIndex == 3);
+        bool isTextAnalysis = (tabIndex == 4);
         _isAoiMode = isAoi;
+        _isTextAnalysisMode = isTextAnalysis;
 
-        // 1. Скрываем/показываем Оверлей
+        // 1. Скрываем/показываем Оверлеи
         if (AoiOverlay != null)
         {
             AoiOverlay.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
             AoiOverlay.IsHitTestVisible = isAoi;
         }
 
-        // 2. Скрываем Пчелиный рой и другие визуализации
-        if (isAoi)
+        if (TextOverlay != null)
         {
-            // В режиме AOI скрываем всё лишнее
+            TextOverlay.Visibility = isTextAnalysis ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // 2. Скрываем Пчелиный рой и другие визуализации
+        if (isAoi || isTextAnalysis)
+        {
+            // В режиме AOI/TextAnalysis скрываем всё лишнее
             if(BeeOverlay != null) BeeOverlay.Visibility = Visibility.Collapsed;
             if(FixOverlay != null) FixOverlay.Visibility = Visibility.Collapsed;
             if(HeatmapOverlay != null) HeatmapOverlay.Visibility = Visibility.Collapsed;
@@ -2899,7 +2912,7 @@ public partial class AnalysisWindow : Window
         }
         else
         {
-            // ВЫХОД из режима AOI: восстанавливаем визуализацию текущего режима
+            // ВЫХОД из режима AOI/TextAnalysis: восстанавливаем визуализацию текущего режима
             UpdateVisualizationForCurrentStimulus();
         }
 
@@ -2907,12 +2920,14 @@ public partial class AnalysisWindow : Window
         bool showMetricChart = (tabIndex == 0);
         if (MetricChart != null) MetricChart.Visibility = showMetricChart ? Visibility.Visible : Visibility.Collapsed;
         if (AoiResultsGrid != null) AoiResultsGrid.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
+        if (TextMetricsGrid != null) TextMetricsGrid.Visibility = isTextAnalysis ? Visibility.Visible : Visibility.Collapsed;
 
-        // 4. Панель инструментов AOI
+        // 4. Панель инструментов
         if (AoiToolbar != null) AoiToolbar.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
+        if (TextAnalysisToolbar != null) TextAnalysisToolbar.Visibility = isTextAnalysis ? Visibility.Visible : Visibility.Collapsed;
 
-        // 5. Управление кнопками Плей/Пауза (скрываем в AOI)
-        Visibility controlsVisibility = isAoi ? Visibility.Collapsed : Visibility.Visible;
+        // 5. Управление кнопками Плей/Пауза (скрываем в AOI и TextAnalysis)
+        Visibility controlsVisibility = (isAoi || isTextAnalysis) ? Visibility.Collapsed : Visibility.Visible;
 
         // Для кнопок Видео (Play/Pause)
         if (PlayPauseBtn != null) PlayPauseBtn.Visibility = controlsVisibility;
@@ -2929,7 +2944,12 @@ public partial class AnalysisWindow : Window
         if (isAoi && _currentStimUid != null)
         {
             LoadAoisForStimulus(_currentStimUid);
-            UpdateAoiColorBtnPreview(); // Обновить цвет кнопки при входе
+            UpdateAoiColorBtnPreview();
+        }
+
+        if (isTextAnalysis && _currentStimUid != null)
+        {
+            LoadTextAnalysisForStimulus(_currentStimUid);
         }
     }
     private void AoiColorBtn_Click(object sender, RoutedEventArgs e)
@@ -5286,4 +5306,320 @@ public partial class AnalysisWindow : Window
             _stimDurationCache[key] = duration;
             return duration;
             }
+
+    #region Text Analysis
+
+    private void LoadTextAnalysisForStimulus(string stimUid)
+    {
+        // Загружаем или создаём настройки текстового анализа
+        var settings = _currentVizSettings.TextAnalysis;
+
+        if (string.IsNullOrWhiteSpace(settings.Layout.Text))
+        {
+            // Попробуем загрузить сохранённые настройки
+            var path = GetTextLayoutPath(stimUid);
+            if (File.Exists(path))
+            {
+                try
+                {
+                    var json = File.ReadAllText(path);
+                    var loaded = JsonSerializer.Deserialize<TextLayoutConfig>(json, _jsonOpts);
+                    if (loaded != null)
+                    {
+                        settings.Layout = loaded;
+                        settings.IsEnabled = true;
+                    }
+                }
+                catch { }
+            }
+        }
+
+        // Обновляем UI тулбара
+        UpdateTextToolbarFromSettings(settings);
+
+        // Если есть текст - выполняем анализ
+        if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
+        {
+            ComputeTextAnalysis(stimUid, settings);
+        }
+        else
+        {
+            // Очищаем overlay и таблицу
+            TextOverlay?.Clear();
+            if (TextMetricsGrid != null)
+                TextMetricsGrid.ItemsSource = null;
+        }
+    }
+
+    private void ComputeTextAnalysis(string stimUid, TextAnalysisSettings settings)
+    {
+        // 1. Верстка текста
+        _currentTextLayout = TextLayoutEngine.ComputeLayout(settings.Layout);
+
+        if (_currentTextLayout.IsEmpty)
+        {
+            TextOverlay?.Clear();
+            return;
+        }
+
+        // 2. Получаем фиксации (из первого видимого результата)
+        var firstVisible = EnumerateVisibleResults().FirstOrDefault();
+        if (firstVisible == null)
+        {
+            TextOverlay?.SetLayout(_currentTextLayout);
+            TextOverlay?.SetBindings(null);
+            return;
+        }
+
+        var fixKey = KF(firstVisible.Uid, stimUid);
+        if (!_fixCache.TryGetValue(fixKey, out var fixations))
+        {
+            // Детектируем фиксации
+            var rawKey = K(firstVisible.Uid, stimUid, _detectSettings.EyeSelection);
+            var raw = GetRawSamplesForStim(firstVisible.Uid, stimUid);
+            if (raw.Count > 0)
+            {
+                var preprocessed = AnalysisFixationPipeline.Preprocess(raw, _detectSettings);
+                fixations = _detectSettings.Algorithm == FixationAlgorithm.Idt
+                    ? AnalysisFixationPipeline.DetectIdt(preprocessed, _screenW, _screenH, _detectSettings)
+                    : AnalysisFixationPipeline.DetectIvt(preprocessed, _screenW, _screenH, _screenWmm, _screenHmm, _detectSettings);
+                _fixCache[fixKey] = fixations;
+            }
+            else
+            {
+                fixations = new List<Fixation>();
+            }
+        }
+
+        // 3. Коррекция дрифта (если включена)
+        IReadOnlyList<Fixation> correctedFixations = fixations;
+        if (settings.DriftCorrection != DriftCorrectionMethod.None && _currentTextLayout != null)
+        {
+            var driftResult = ReadingDriftCorrection.CorrectDrift(
+                fixations, _currentTextLayout, settings.DriftCorrection);
+            correctedFixations = driftResult.CorrectedFixations;
+        }
+
+        // 4. Вычисляем метрики
+        _currentReadingAnalysis = ReadingMetricsCalculator.ComputeMetrics(
+            correctedFixations,
+            _currentTextLayout,
+            settings,
+            _screenWmm, _screenHmm, _screenW, _screenH,
+            0.6f // Default distance
+        );
+
+        // 5. Обновляем UI
+        TextOverlay?.SetLayout(_currentTextLayout);
+        TextOverlay?.SetBindings(_currentReadingAnalysis.Bindings?.ToList());
+
+        if (TextMetricsGrid != null)
+        {
+            TextMetricsGrid.ItemsSource = _currentReadingAnalysis.WordMetrics;
+        }
+    }
+
+    private void UpdateTextToolbarFromSettings(TextAnalysisSettings settings)
+    {
+        if (TextFontCombo != null)
+        {
+            foreach (ComboBoxItem item in TextFontCombo.Items)
+            {
+                if (item.Content?.ToString() == settings.Layout.FontName)
+                {
+                    TextFontCombo.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        if (TextSizeCombo != null)
+        {
+            var sizeStr = settings.Layout.FontSizePx.ToString("F0");
+            foreach (ComboBoxItem item in TextSizeCombo.Items)
+            {
+                if (item.Content?.ToString() == sizeStr)
+                {
+                    TextSizeCombo.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+
+        if (TextLineSpacingCombo != null)
+        {
+            var spacingStr = settings.Layout.LineSpacing.ToString("F1", CultureInfo.InvariantCulture);
+            foreach (ComboBoxItem item in TextLineSpacingCombo.Items)
+            {
+                if (item.Content?.ToString() == spacingStr)
+                {
+                    TextLineSpacingCombo.SelectedItem = item;
+                    break;
+                }
+            }
+        }
+    }
+
+    private void TextFont_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressVizUi || _currentStimUid == null || !_isTextAnalysisMode) return;
+
+        var settings = _currentVizSettings.TextAnalysis;
+
+        if (TextFontCombo?.SelectedItem is ComboBoxItem fontItem)
+            settings.Layout.FontName = fontItem.Content?.ToString() ?? "Segoe UI";
+
+        if (TextSizeCombo?.SelectedItem is ComboBoxItem sizeItem &&
+            double.TryParse(sizeItem.Content?.ToString(), out var size))
+            settings.Layout.FontSizePx = size;
+
+        if (TextLineSpacingCombo?.SelectedItem is ComboBoxItem spacingItem &&
+            double.TryParse(spacingItem.Content?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var spacing))
+            settings.Layout.LineSpacing = spacing;
+
+        SaveCurrentVisualizationSettings();
+
+        if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
+        {
+            ComputeTextAnalysis(_currentStimUid, settings);
+        }
+    }
+
+    private void EditTextLayout_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentStimUid == null) return;
+
+        var settings = _currentVizSettings.TextAnalysis;
+
+        // Показываем простой диалог для ввода текста
+        var dialog = new Window
+        {
+            Title = "Редактирование текста для анализа",
+            Width = 600,
+            Height = 400,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this
+        };
+
+        var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var textBox = new System.Windows.Controls.TextBox
+        {
+            Text = settings.Layout.Text,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Margin = new Thickness(10),
+            FontSize = 14
+        };
+        Grid.SetRow(textBox, 0);
+        grid.Children.Add(textBox);
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(10)
+        };
+
+        var okBtn = new System.Windows.Controls.Button { Content = "OK", Width = 80, Margin = new Thickness(5) };
+        var cancelBtn = new System.Windows.Controls.Button { Content = "Отмена", Width = 80, Margin = new Thickness(5) };
+
+        okBtn.Click += (s, args) => { dialog.DialogResult = true; dialog.Close(); };
+        cancelBtn.Click += (s, args) => { dialog.DialogResult = false; dialog.Close(); };
+
+        buttonPanel.Children.Add(okBtn);
+        buttonPanel.Children.Add(cancelBtn);
+        Grid.SetRow(buttonPanel, 1);
+        grid.Children.Add(buttonPanel);
+
+        dialog.Content = grid;
+
+        if (dialog.ShowDialog() == true)
+        {
+            settings.Layout.Text = textBox.Text;
+            settings.IsEnabled = !string.IsNullOrWhiteSpace(textBox.Text);
+
+            // Сохраняем настройки
+            SaveTextLayoutSettings(_currentStimUid, settings.Layout);
+            SaveCurrentVisualizationSettings();
+
+            // Перезапускаем анализ
+            ComputeTextAnalysis(_currentStimUid, settings);
+        }
+    }
+
+    private void ApplyDriftCorrection_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentStimUid == null) return;
+
+        var settings = _currentVizSettings.TextAnalysis;
+
+        // Циклически переключаем метод коррекции
+        settings.DriftCorrection = settings.DriftCorrection switch
+        {
+            DriftCorrectionMethod.None => DriftCorrectionMethod.Slice,
+            DriftCorrectionMethod.Slice => DriftCorrectionMethod.Cluster,
+            DriftCorrectionMethod.Cluster => DriftCorrectionMethod.None,
+            _ => DriftCorrectionMethod.None
+        };
+
+        // Обновляем текст кнопки
+        if (ApplyDriftBtn != null)
+        {
+            ApplyDriftBtn.Content = settings.DriftCorrection switch
+            {
+                DriftCorrectionMethod.None => "Коррекция: Нет",
+                DriftCorrectionMethod.Slice => "Коррекция: Slice",
+                DriftCorrectionMethod.Cluster => "Коррекция: Cluster",
+                _ => "Коррекция дрифта"
+            };
+        }
+
+        SaveCurrentVisualizationSettings();
+
+        if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
+        {
+            ComputeTextAnalysis(_currentStimUid, settings);
+        }
+    }
+
+    private void TextMetricsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (TextMetricsGrid?.SelectedItem is WordReadingMetrics selected)
+        {
+            TextOverlay?.SetSelectedWord(selected.WordIndex);
+        }
+        else
+        {
+            TextOverlay?.SetSelectedWord(null);
+        }
+    }
+
+    private string GetTextLayoutPath(string stimUid)
+    {
+        if (string.IsNullOrWhiteSpace(_primaryResultUid)) return "";
+        return Path.Combine(_expDir, "results", _primaryResultUid, stimUid, "text_layout.json");
+    }
+
+    private void SaveTextLayoutSettings(string stimUid, TextLayoutConfig config)
+    {
+        try
+        {
+            var path = GetTextLayoutPath(stimUid);
+            if (string.IsNullOrWhiteSpace(path)) return;
+
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(dir))
+                Directory.CreateDirectory(dir);
+
+            var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(path, json);
+        }
+        catch { }
+    }
+
+    #endregion
             }

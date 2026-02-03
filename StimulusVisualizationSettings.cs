@@ -6,6 +6,7 @@ public enum StimulusVisualizationMode
     Heatmap = 1,
     BeeSwarm = 2,
     AreasOfInterest = 3,
+    TextAnalysis = 4,
 }
 
 public enum HeatmapFalloff
@@ -49,6 +50,7 @@ public sealed class StimulusVizSettings
 {
     public StimulusVisualizationMode Mode { get; set; } = StimulusVisualizationMode.GazePath;
     public StimulusHeatmapSettings Heatmap { get; set; } = new();
+    public TextAnalysisSettings TextAnalysis { get; set; } = new();
 
     public StimulusVizSettings Clone()
     {
@@ -56,6 +58,25 @@ public sealed class StimulusVizSettings
         {
             Mode = Mode,
             Heatmap = Heatmap.Clone(),
+            TextAnalysis = new TextAnalysisSettings
+            {
+                IsEnabled = TextAnalysis.IsEnabled,
+                Layout = new TextLayoutConfig
+                {
+                    Text = TextAnalysis.Layout.Text,
+                    FontName = TextAnalysis.Layout.FontName,
+                    FontSizePx = TextAnalysis.Layout.FontSizePx,
+                    LineSpacing = TextAnalysis.Layout.LineSpacing,
+                    MaxWidthPx = TextAnalysis.Layout.MaxWidthPx,
+                    PaddingLeft = TextAnalysis.Layout.PaddingLeft,
+                    PaddingTop = TextAnalysis.Layout.PaddingTop,
+                    Alignment = TextAnalysis.Layout.Alignment
+                },
+                DriftCorrection = TextAnalysis.DriftCorrection,
+                MaxFixationDistancePx = TextAnalysis.MaxFixationDistancePx,
+                MinFixationDurationSec = TextAnalysis.MinFixationDurationSec,
+                MaxFixationDurationSec = TextAnalysis.MaxFixationDurationSec
+            }
         };
     }
 

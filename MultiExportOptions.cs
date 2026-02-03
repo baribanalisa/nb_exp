@@ -24,4 +24,9 @@ public sealed class MultiExportOptions
     public bool ExportGazeImage { get; set; }
     public bool ExportHeatImage { get; set; }
     public bool ExportEdf { get; set; }
+
+    /// <summary>
+    /// Экспорт метрик чтения (word/line reading metrics)
+    /// </summary>
+    public bool ExportTextMetrics { get; set; }
 }

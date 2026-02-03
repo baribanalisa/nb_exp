@@ -173,6 +173,12 @@ public sealed class MultiExportService
                     ExportAoi(options, now, rr, st);
                 }
 
+                if (options.ExportTextMetrics)
+                {
+                    report($"[DEBUG] Вызываю ExportTextMetrics для {rr.Uid}/{st.Uid}");
+                    ExportTextMetrics(options, now, rr, st);
+                }
+
                 if (options.ExportGazeImage)
                 {
                     report($"[DEBUG] Вызываю ExportGazeImage для {rr.Uid}/{st.Uid}");
@@ -222,6 +228,9 @@ public sealed class MultiExportService
             if (options.ExportAoi)
                 ExportAoi(options, now, results[0], st);
 
+            if (options.ExportTextMetrics)
+                ExportTextMetrics(options, now, results[0], st);
+
             // Генерируем изображения для каждого результата
             if (options.ExportGazeImage || options.ExportHeatImage)
             {
@@ -267,6 +276,9 @@ public sealed class MultiExportService
             if (options.ExportAoi)
                 ExportAoi_AggregatedPerResult(options, now, rr, stimuli);
 
+            if (options.ExportTextMetrics)
+                ExportTextMetrics_AggregatedPerResult(options, now, rr, stimuli);
+
             // Генерируем изображения для каждого стимула
             if (options.ExportGazeImage || options.ExportHeatImage)
             {
@@ -291,6 +303,9 @@ public sealed class MultiExportService
     {
         if (options.ExportAoi)
             ExportAoi_AllInOne(options, now, results, stimuli);
+
+        if (options.ExportTextMetrics)
+            ExportTextMetrics_AllInOne(options, now, results, stimuli);
 
         if (options.ExportGazeImage || options.ExportHeatImage)
         {
@@ -1688,5 +1703,325 @@ public sealed class MultiExportService
             foreach (var r in EnumerateActionRecords(path))
                 yield return (uid, r);
         }
+    }
+
+    // ===== Text Metrics (CSV/XLSX) =====
+
+    private void ExportTextMetrics(MultiExportOptions options, DateTime now, MultiExportResult rr, StimulFile st)
+    {
+        var textLayoutPath = FindTextLayoutJson(st.Uid, preferredResultUid: rr.Uid);
+        if (textLayoutPath == null) return;
+
+        var config = LoadTextLayoutConfig(textLayoutPath);
+        if (config == null || string.IsNullOrWhiteSpace(config.Text)) return;
+
+        var layout = TextLayoutEngine.ComputeLayout(config);
+        if (layout.IsEmpty) return;
+
+        // Получаем фиксации
+        var fixations = GetFixationsForStimulus(rr.Uid, st.Uid);
+        if (fixations.Count == 0) return;
+
+        // Вычисляем метрики
+        var settings = new TextAnalysisSettings { Layout = config };
+        var analysis = ReadingMetricsCalculator.ComputeMetrics(fixations, layout, settings, 0, 0, 1920, 1080, 0.6f);
+
+        if (analysis.WordMetrics == null || analysis.WordMetrics.Length == 0) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, st, "text_metrics", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteTextMetricsXlsx(dst, st.Uid, analysis.WordMetrics);
+        else
+            WriteTextMetricsCsv(dst, st.Uid, analysis.WordMetrics);
+    }
+
+    private void ExportTextMetrics_AggregatedPerResult(MultiExportOptions options, DateTime now, MultiExportResult rr, IReadOnlyList<StimulFile> stimuli)
+    {
+        var allMetrics = new List<(string stimUid, WordReadingMetrics metric)>();
+
+        foreach (var st in stimuli)
+        {
+            var textLayoutPath = FindTextLayoutJson(st.Uid, preferredResultUid: rr.Uid);
+            if (textLayoutPath == null) continue;
+
+            var config = LoadTextLayoutConfig(textLayoutPath);
+            if (config == null || string.IsNullOrWhiteSpace(config.Text)) continue;
+
+            var layout = TextLayoutEngine.ComputeLayout(config);
+            if (layout.IsEmpty) continue;
+
+            var fixations = GetFixationsForStimulus(rr.Uid, st.Uid);
+            if (fixations.Count == 0) continue;
+
+            var settings = new TextAnalysisSettings { Layout = config };
+            var analysis = ReadingMetricsCalculator.ComputeMetrics(fixations, layout, settings, 0, 0, 1920, 1080, 0.6f);
+
+            if (analysis.WordMetrics != null)
+            {
+                foreach (var m in analysis.WordMetrics)
+                    allMetrics.Add((st.Uid, m));
+            }
+        }
+
+        if (allMetrics.Count == 0) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, rr, stimuli[0], "text_metrics_per_result", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteTextMetricsAggregatedXlsx(dst, allMetrics);
+        else
+            WriteTextMetricsAggregatedCsv(dst, allMetrics);
+    }
+
+    private void ExportTextMetrics_AllInOne(MultiExportOptions options, DateTime now, IReadOnlyList<MultiExportResult> results, IReadOnlyList<StimulFile> stimuli)
+    {
+        var allMetrics = new List<(string stimUid, WordReadingMetrics metric)>();
+
+        foreach (var st in stimuli)
+        {
+            var textLayoutPath = FindTextLayoutJson(st.Uid, preferredResultUid: results.Count > 0 ? results[0].Uid : null);
+            if (textLayoutPath == null) continue;
+
+            var config = LoadTextLayoutConfig(textLayoutPath);
+            if (config == null || string.IsNullOrWhiteSpace(config.Text)) continue;
+
+            var layout = TextLayoutEngine.ComputeLayout(config);
+            if (layout.IsEmpty) continue;
+
+            foreach (var rr in results)
+            {
+                var fixations = GetFixationsForStimulus(rr.Uid, st.Uid);
+                if (fixations.Count == 0) continue;
+
+                var settings = new TextAnalysisSettings { Layout = config };
+                var analysis = ReadingMetricsCalculator.ComputeMetrics(fixations, layout, settings, 0, 0, 1920, 1080, 0.6f);
+
+                if (analysis.WordMetrics != null)
+                {
+                    foreach (var m in analysis.WordMetrics)
+                        allMetrics.Add((st.Uid, m));
+                }
+            }
+        }
+
+        if (allMetrics.Count == 0) return;
+
+        var ext = options.DataFormat == ExportDataFormat.XLSX ? "xlsx" : "csv";
+        var name = BuildFileName(options, now, results[0], stimuli[0], "text_metrics_all", ext);
+        var dst = EnsureUniquePath(Path.Combine(options.OutputDir, name));
+
+        if (options.DataFormat == ExportDataFormat.XLSX)
+            WriteTextMetricsAggregatedXlsx(dst, allMetrics);
+        else
+            WriteTextMetricsAggregatedCsv(dst, allMetrics);
+    }
+
+    private string? FindTextLayoutJson(string stimUid, string? preferredResultUid)
+    {
+        // Ищем text_layout.json в папке результата
+        if (!string.IsNullOrWhiteSpace(preferredResultUid))
+        {
+            var path = Path.Combine(_resultsDir, preferredResultUid, stimUid, "text_layout.json");
+            if (File.Exists(path)) return path;
+        }
+
+        // Ищем в любом результате
+        if (Directory.Exists(_resultsDir))
+        {
+            foreach (var resultDir in Directory.EnumerateDirectories(_resultsDir))
+            {
+                var path = Path.Combine(resultDir, stimUid, "text_layout.json");
+                if (File.Exists(path)) return path;
+            }
+        }
+
+        return null;
+    }
+
+    private TextLayoutConfig? LoadTextLayoutConfig(string path)
+    {
+        try
+        {
+            var json = File.ReadAllText(path);
+            return JsonSerializer.Deserialize<TextLayoutConfig>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                ReadCommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private List<Fixation> GetFixationsForStimulus(string resultUid, string stimUid)
+    {
+        var raw = GetRawSamplesForStim(resultUid, stimUid);
+        if (raw.Count == 0) return new List<Fixation>();
+
+        var preprocessed = AnalysisFixationPipeline.Preprocess(raw, _detectSettings);
+        return AnalysisFixationPipeline.DetectIdt(preprocessed, 1920, 1080, _detectSettings);
+    }
+
+    private void WriteTextMetricsCsv(string path, string stimUid, WordReadingMetrics[] metrics)
+    {
+        using var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8);
+
+        // Header
+        writer.WriteLine("stimulus_id;word_index;word_text;line_index;fixation_count;ffd_sec;gd_sec;tfd_sec;go_past_sec;second_pass_sec;landing_pos;regressions_in;regressions_out;was_skipped;was_refixated");
+
+        foreach (var m in metrics)
+        {
+            writer.WriteLine(string.Join(";",
+                CsvEscape(stimUid),
+                m.WordIndex,
+                CsvEscape(m.WordText),
+                m.LineIndex,
+                m.FixationCount,
+                m.FirstFixationDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.GazeDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.TotalFixationDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.GoPastDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.SecondPassDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.InitialLandingPosition.ToString("F3", CultureInfo.InvariantCulture),
+                m.NumberOfRegressionsIn,
+                m.NumberOfRegressionsOut,
+                m.WasSkipped ? "1" : "0",
+                m.WasRefixated ? "1" : "0"
+            ));
+        }
+    }
+
+    private void WriteTextMetricsXlsx(string path, string stimUid, WordReadingMetrics[] metrics)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("TextMetrics");
+
+        // Header
+        ws.Cell(1, 1).Value = "stimulus_id";
+        ws.Cell(1, 2).Value = "word_index";
+        ws.Cell(1, 3).Value = "word_text";
+        ws.Cell(1, 4).Value = "line_index";
+        ws.Cell(1, 5).Value = "fixation_count";
+        ws.Cell(1, 6).Value = "ffd_sec";
+        ws.Cell(1, 7).Value = "gd_sec";
+        ws.Cell(1, 8).Value = "tfd_sec";
+        ws.Cell(1, 9).Value = "go_past_sec";
+        ws.Cell(1, 10).Value = "second_pass_sec";
+        ws.Cell(1, 11).Value = "landing_pos";
+        ws.Cell(1, 12).Value = "regressions_in";
+        ws.Cell(1, 13).Value = "regressions_out";
+        ws.Cell(1, 14).Value = "was_skipped";
+        ws.Cell(1, 15).Value = "was_refixated";
+
+        int row = 2;
+        foreach (var m in metrics)
+        {
+            ws.Cell(row, 1).Value = stimUid;
+            ws.Cell(row, 2).Value = m.WordIndex;
+            ws.Cell(row, 3).Value = m.WordText;
+            ws.Cell(row, 4).Value = m.LineIndex;
+            ws.Cell(row, 5).Value = m.FixationCount;
+            ws.Cell(row, 6).Value = m.FirstFixationDuration;
+            ws.Cell(row, 7).Value = m.GazeDuration;
+            ws.Cell(row, 8).Value = m.TotalFixationDuration;
+            ws.Cell(row, 9).Value = m.GoPastDuration;
+            ws.Cell(row, 10).Value = m.SecondPassDuration;
+            ws.Cell(row, 11).Value = m.InitialLandingPosition;
+            ws.Cell(row, 12).Value = m.NumberOfRegressionsIn;
+            ws.Cell(row, 13).Value = m.NumberOfRegressionsOut;
+            ws.Cell(row, 14).Value = m.WasSkipped ? 1 : 0;
+            ws.Cell(row, 15).Value = m.WasRefixated ? 1 : 0;
+            row++;
+        }
+
+        if (row < ExcelAutoFitThreshold)
+            ws.Columns().AdjustToContents();
+
+        wb.SaveAs(path);
+    }
+
+    private void WriteTextMetricsAggregatedCsv(string path, List<(string stimUid, WordReadingMetrics metric)> data)
+    {
+        using var writer = new StreamWriter(path, false, System.Text.Encoding.UTF8);
+
+        writer.WriteLine("stimulus_id;word_index;word_text;line_index;fixation_count;ffd_sec;gd_sec;tfd_sec;go_past_sec;second_pass_sec;landing_pos;regressions_in;regressions_out;was_skipped;was_refixated");
+
+        foreach (var (stimUid, m) in data)
+        {
+            writer.WriteLine(string.Join(";",
+                CsvEscape(stimUid),
+                m.WordIndex,
+                CsvEscape(m.WordText),
+                m.LineIndex,
+                m.FixationCount,
+                m.FirstFixationDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.GazeDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.TotalFixationDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.GoPastDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.SecondPassDuration.ToString("F4", CultureInfo.InvariantCulture),
+                m.InitialLandingPosition.ToString("F3", CultureInfo.InvariantCulture),
+                m.NumberOfRegressionsIn,
+                m.NumberOfRegressionsOut,
+                m.WasSkipped ? "1" : "0",
+                m.WasRefixated ? "1" : "0"
+            ));
+        }
+    }
+
+    private void WriteTextMetricsAggregatedXlsx(string path, List<(string stimUid, WordReadingMetrics metric)> data)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("TextMetrics");
+
+        // Header
+        ws.Cell(1, 1).Value = "stimulus_id";
+        ws.Cell(1, 2).Value = "word_index";
+        ws.Cell(1, 3).Value = "word_text";
+        ws.Cell(1, 4).Value = "line_index";
+        ws.Cell(1, 5).Value = "fixation_count";
+        ws.Cell(1, 6).Value = "ffd_sec";
+        ws.Cell(1, 7).Value = "gd_sec";
+        ws.Cell(1, 8).Value = "tfd_sec";
+        ws.Cell(1, 9).Value = "go_past_sec";
+        ws.Cell(1, 10).Value = "second_pass_sec";
+        ws.Cell(1, 11).Value = "landing_pos";
+        ws.Cell(1, 12).Value = "regressions_in";
+        ws.Cell(1, 13).Value = "regressions_out";
+        ws.Cell(1, 14).Value = "was_skipped";
+        ws.Cell(1, 15).Value = "was_refixated";
+
+        int row = 2;
+        foreach (var (stimUid, m) in data)
+        {
+            ws.Cell(row, 1).Value = stimUid;
+            ws.Cell(row, 2).Value = m.WordIndex;
+            ws.Cell(row, 3).Value = m.WordText;
+            ws.Cell(row, 4).Value = m.LineIndex;
+            ws.Cell(row, 5).Value = m.FixationCount;
+            ws.Cell(row, 6).Value = m.FirstFixationDuration;
+            ws.Cell(row, 7).Value = m.GazeDuration;
+            ws.Cell(row, 8).Value = m.TotalFixationDuration;
+            ws.Cell(row, 9).Value = m.GoPastDuration;
+            ws.Cell(row, 10).Value = m.SecondPassDuration;
+            ws.Cell(row, 11).Value = m.InitialLandingPosition;
+            ws.Cell(row, 12).Value = m.NumberOfRegressionsIn;
+            ws.Cell(row, 13).Value = m.NumberOfRegressionsOut;
+            ws.Cell(row, 14).Value = m.WasSkipped ? 1 : 0;
+            ws.Cell(row, 15).Value = m.WasRefixated ? 1 : 0;
+            row++;
+        }
+
+        if (row < ExcelAutoFitThreshold)
+            ws.Columns().AdjustToContents();
+
+        wb.SaveAs(path);
     }
 }

@@ -389,6 +389,7 @@
                         <TabItem Header="Тепловая карта" Style="{StaticResource TopTabItemStyle}"/>
                         <TabItem Header="Пчелиный рой" Style="{StaticResource TopTabItemStyle}"/>
                         <TabItem Header="Области интереса" Style="{StaticResource TopTabItemStyle}"/>
+                        <TabItem Header="Анализ текста" Style="{StaticResource TopTabItemStyle}"/>
                     </TabControl>
 
                 </Grid>
@@ -397,7 +398,7 @@
                 <Border x:Name="AoiToolbar"
                         Grid.Row="1"
                         Background="#F3F4F6" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,10"
-                        Visibility="Collapsed"> 
+                        Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Форма:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
                         <ComboBox x:Name="AoiShapeCombo" Width="120" Margin="0,0,16,0" SelectionChanged="AoiShapeCombo_SelectionChanged" Height="28">
@@ -408,9 +409,9 @@
 
                         <!-- ПАЛИТРА: Кнопка вместо ComboBox -->
                         <TextBlock Text="Цвет:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <Button x:Name="AoiColorBtn" 
-                                Width="40" Height="28" 
-                                Margin="0,0,16,0" 
+                        <Button x:Name="AoiColorBtn"
+                                Width="40" Height="28"
+                                Margin="0,0,16,0"
                                 BorderThickness="1" BorderBrush="#CCC"
                                 Click="AoiColorBtn_Click" Cursor="Hand">
                             <Button.Template>
@@ -428,6 +429,56 @@
                             <ComboBoxItem Content="4 пкс" Tag="4.0"/>
                             <ComboBoxItem Content="5 пкс" Tag="5.0"/>
                         </ComboBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- Тулбар анализа текста -->
+                <Border x:Name="TextAnalysisToolbar"
+                        Grid.Row="1"
+                        Background="#F3F4F6" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,10"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Шрифт:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="TextFontCombo" Width="140" Margin="0,0,16,0" Height="28" SelectionChanged="TextFont_Changed">
+                            <ComboBoxItem Content="Segoe UI" IsSelected="True"/>
+                            <ComboBoxItem Content="Arial"/>
+                            <ComboBoxItem Content="Times New Roman"/>
+                            <ComboBoxItem Content="Consolas"/>
+                            <ComboBoxItem Content="Calibri"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Размер:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="TextSizeCombo" Width="70" Margin="0,0,16,0" Height="28" SelectionChanged="TextFont_Changed">
+                            <ComboBoxItem Content="16"/>
+                            <ComboBoxItem Content="18"/>
+                            <ComboBoxItem Content="20"/>
+                            <ComboBoxItem Content="24" IsSelected="True"/>
+                            <ComboBoxItem Content="28"/>
+                            <ComboBoxItem Content="32"/>
+                            <ComboBoxItem Content="36"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Интервал:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="TextLineSpacingCombo" Width="60" Margin="0,0,16,0" Height="28" SelectionChanged="TextFont_Changed">
+                            <ComboBoxItem Content="1.0"/>
+                            <ComboBoxItem Content="1.2"/>
+                            <ComboBoxItem Content="1.5" IsSelected="True"/>
+                            <ComboBoxItem Content="1.8"/>
+                            <ComboBoxItem Content="2.0"/>
+                        </ComboBox>
+
+                        <Button x:Name="EditTextBtn"
+                                Content="Редактировать текст"
+                                Style="{StaticResource PillButtonStyle}"
+                                Height="28" Padding="12,0"
+                                Margin="0,0,8,0"
+                                Click="EditTextLayout_Click"/>
+
+                        <Button x:Name="ApplyDriftBtn"
+                                Content="Коррекция дрифта"
+                                Style="{StaticResource PillButtonStyle}"
+                                Height="28" Padding="12,0"
+                                Click="ApplyDriftCorrection_Click"/>
                     </StackPanel>
                 </Border>
                 
@@ -497,6 +548,13 @@
                                         MouseMove="AoiOverlay_MouseMove"
                                         MouseLeftButtonUp="AoiOverlay_MouseUp"/>
 
+                        <!-- Overlay для анализа текста -->
+                        <local:TextLayoutOverlay x:Name="TextOverlay"
+                                                 Visibility="Collapsed"
+                                                 IsHitTestVisible="False"
+                                                 Width="{Binding ActualWidth, ElementName=ScreenCanvas}"
+                                                 Height="{Binding ActualHeight, ElementName=ScreenCanvas}"/>
+
                         <TextBlock x:Name="EmptyHint" Text="Выбери стимул слева" Foreground="#88000000" FontSize="16" TextAlignment="Center"/>
                     </Canvas>
                 </Viewbox>
@@ -554,11 +612,40 @@
                             <DataGridTemplateColumn Width="40">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <Button Content="✕" Click="DeleteAoiRow_Click" 
+                                        <Button Content="✕" Click="DeleteAoiRow_Click"
                                                 Background="Transparent" BorderThickness="0" Foreground="Red" Cursor="Hand" ToolTip="Удалить область интереса"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- 3. Таблица метрик текста (видна только в режиме TextAnalysis) -->
+                    <DataGrid x:Name="TextMetricsGrid"
+                              Visibility="Collapsed"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              Background="White"
+                              BorderThickness="1" BorderBrush="#E5E7EB"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              SelectionChanged="TextMetricsGrid_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="#" Binding="{Binding WordIndex}" IsReadOnly="True" Width="40"/>
+                            <DataGridTextColumn Header="Слово" Binding="{Binding WordText}" IsReadOnly="True" Width="100"/>
+                            <DataGridTextColumn Header="Стр." Binding="{Binding LineIndex}" IsReadOnly="True" Width="40"/>
+                            <DataGridTextColumn Header="Фикс.(N)" Binding="{Binding FixationCount}" IsReadOnly="True" Width="65"/>
+                            <DataGridTextColumn Header="FFD (с)" Binding="{Binding FirstFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="70" ToolTipService.ToolTip="First Fixation Duration"/>
+                            <DataGridTextColumn Header="GD (с)" Binding="{Binding GazeDuration, StringFormat=F3}" IsReadOnly="True" Width="70" ToolTipService.ToolTip="Gaze Duration (first-pass)"/>
+                            <DataGridTextColumn Header="TFD (с)" Binding="{Binding TotalFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="70" ToolTipService.ToolTip="Total Fixation Duration"/>
+                            <DataGridTextColumn Header="Go-past" Binding="{Binding GoPastDuration, StringFormat=F3}" IsReadOnly="True" Width="70" ToolTipService.ToolTip="Go-past Duration"/>
+                            <DataGridTextColumn Header="Регр.вх" Binding="{Binding NumberOfRegressionsIn}" IsReadOnly="True" Width="65" ToolTipService.ToolTip="Количество регрессий в это слово"/>
+                            <DataGridTextColumn Header="Регр.исх" Binding="{Binding NumberOfRegressionsOut}" IsReadOnly="True" Width="65" ToolTipService.ToolTip="Количество регрессий из этого слова"/>
+                            <DataGridTextColumn Header="Позиция" Binding="{Binding InitialLandingPosition, StringFormat=F2}" IsReadOnly="True" Width="65" ToolTipService.ToolTip="Initial Landing Position (0-1)"/>
+                            <DataGridCheckBoxColumn Header="Пропуск" Binding="{Binding WasSkipped}" IsReadOnly="True" Width="60"/>
+                            <DataGridCheckBoxColumn Header="Рефикс." Binding="{Binding WasRefixated}" IsReadOnly="True" Width="60"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
