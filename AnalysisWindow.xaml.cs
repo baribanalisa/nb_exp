@@ -5371,12 +5371,12 @@ public partial class AnalysisWindow : Window
             return;
         }
 
-        var fixKey = KF(firstVisible.Uid, stimUid);
+        var fixKey = KF(firstVisible.ResultUid, stimUid);
         if (!_fixCache.TryGetValue(fixKey, out var fixations))
         {
             // Детектируем фиксации
-            var rawKey = K(firstVisible.Uid, stimUid, _detectSettings.EyeSelection);
-            var raw = GetRawSamplesForStim(firstVisible.Uid, stimUid);
+            var rawKey = K(firstVisible.ResultUid, stimUid, _detectSettings.Eye);
+            var raw = GetRawSamplesForStim(firstVisible.ResultUid, stimUid);
             if (raw.Count > 0)
             {
                 var preprocessed = AnalysisFixationPipeline.Preprocess(raw, _detectSettings);
@@ -5519,8 +5519,8 @@ public partial class AnalysisWindow : Window
 
         var buttonPanel = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
             Margin = new Thickness(10)
         };
 

@@ -1880,9 +1880,9 @@ public sealed class MultiExportService
         foreach (var m in metrics)
         {
             writer.WriteLine(string.Join(";",
-                CsvEscape(stimUid),
+                EscapeCsv(stimUid),
                 m.WordIndex,
-                CsvEscape(m.WordText),
+                EscapeCsv(m.WordText),
                 m.LineIndex,
                 m.FixationCount,
                 m.FirstFixationDuration.ToString("F4", CultureInfo.InvariantCulture),
@@ -1957,9 +1957,9 @@ public sealed class MultiExportService
         foreach (var (stimUid, m) in data)
         {
             writer.WriteLine(string.Join(";",
-                CsvEscape(stimUid),
+                EscapeCsv(stimUid),
                 m.WordIndex,
-                CsvEscape(m.WordText),
+                EscapeCsv(m.WordText),
                 m.LineIndex,
                 m.FixationCount,
                 m.FirstFixationDuration.ToString("F4", CultureInfo.InvariantCulture),
