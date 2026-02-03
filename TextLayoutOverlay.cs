@@ -270,9 +270,18 @@ public sealed class TextLayoutOverlay : FrameworkElement
                     new FontFamily(_layout.Config.FontName),
                     FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 
-                // Используем реальную высоту слова из OCR (word.Height),
-                // а не config.FontSizePx, который может быть неточным
-                double fontSize = word.Height > 0 ? word.Height : _layout.Config.FontSizePx;
+                // Используем высоту строки из OCR (line.Height), чтобы сохранить
+                // реальные различия размера текста между строками и избежать
+                // шума от отдельных слов.
+                double fontSize = _layout.Config.FontSizePx;
+                if (word.LineIndex >= 0 && word.LineIndex < _layout.Lines.Count)
+                {
+                    var lineHeight = _layout.Lines[word.LineIndex].Height;
+                    if (lineHeight > 0)
+                    {
+                        fontSize = lineHeight;
+                    }
+                }
 
                 var ft = new FormattedText(
                     word.Text,
