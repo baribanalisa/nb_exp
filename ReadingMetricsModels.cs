@@ -14,7 +14,13 @@ public enum DriftCorrectionMethod
     Slice,
 
     /// <summary>K-means кластеризация по Y</summary>
-    Cluster
+    Cluster,
+
+    /// <summary>Dynamic Time Warping - нелинейная коррекция</summary>
+    Warp,
+
+    /// <summary>Автоматический выбор лучшего метода</summary>
+    Auto
 }
 
 /// <summary>
@@ -173,8 +179,8 @@ public sealed class DriftCorrectionResult
     /// <summary>Среднее смещение (px)</summary>
     public double Delta { get; set; }
 
-    /// <summary>Надёжность коррекции (0-1)</summary>
-    public double Kappa { get; set; }
+    /// <summary>Надёжность коррекции (0-1), null если не вычислена</summary>
+    public double? Kappa { get; set; }
 
     /// <summary>Использованный метод</summary>
     public DriftCorrectionMethod Method { get; set; }

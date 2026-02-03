@@ -5309,73 +5309,154 @@ public partial class AnalysisWindow : Window
 
     #region Text Analysis
 
+    // Кэш оригинальных фиксаций для текстового анализа (до коррекции)
+    private List<Fixation>? _originalTextFixations;
+    // Последний результат коррекции дрифта
+    private DriftCorrectionResult? _lastDriftResult;
+    // Результат OCR для текущего стимула
+    private OcrDetectionResult? _currentOcrResult;
+    // Кэш OCR результатов по stimUid
+    private readonly Dictionary<string, OcrDetectionResult> _ocrCache = new();
+
     private void LoadTextAnalysisForStimulus(string stimUid)
     {
-        // Загружаем или создаём настройки текстового анализа
         var settings = _currentVizSettings.TextAnalysis;
 
-        if (string.IsNullOrWhiteSpace(settings.Layout.Text))
-        {
-            // Попробуем загрузить сохранённые настройки
-            var path = GetTextLayoutPath(stimUid);
-            if (File.Exists(path))
-            {
-                try
-                {
-                    var json = File.ReadAllText(path);
-                    var loaded = JsonSerializer.Deserialize<TextLayoutConfig>(json, _jsonOpts);
-                    if (loaded != null)
-                    {
-                        settings.Layout = loaded;
-                        settings.IsEnabled = true;
-                    }
-                }
-                catch { }
-            }
-        }
+        // Сначала очищаем текущий OCR результат
+        _currentOcrResult = null;
+        _currentTextLayout = null;
 
-        // Обновляем UI тулбара
-        UpdateTextToolbarFromSettings(settings);
-
-        // Если есть текст - выполняем анализ
-        if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
+        // 1. Проверяем кэш OCR для этого стимула
+        if (_ocrCache.TryGetValue(stimUid, out var cachedOcr))
         {
-            ComputeTextAnalysis(stimUid, settings);
+            _currentOcrResult = cachedOcr;
+            settings.Layout = OcrTextDetector.CreateLayoutConfig(cachedOcr);
+            settings.IsEnabled = true;
         }
         else
         {
-            // Очищаем overlay и таблицу
-            TextOverlay?.Clear();
-            if (TextMetricsGrid != null)
-                TextMetricsGrid.ItemsSource = null;
+            // Сбрасываем настройки для нового стимула (без OCR)
+            settings.Layout = new TextLayoutConfig();
+            settings.IsEnabled = false;
+
+            // 2. Пытаемся загрузить сохранённые настройки
+            var path = GetTextLayoutPath(stimUid);
+            if (File.Exists(path))
+            {
+                var saved = TextStimuliLoader.LoadSavedConfig(path);
+                if (saved != null)
+                {
+                    settings.Layout = saved;
+                    settings.IsEnabled = true;
+                }
+            }
+        }
+
+        // 3. Обновляем UI тулбара
+        UpdateTextToolbarFromSettings(settings);
+
+        // 4. Выполняем анализ (показываем фиксации даже без OCR)
+        ComputeTextAnalysis(stimUid, settings);
+    }
+
+    private async void OcrScan_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentStimUid == null) return;
+
+        // Получаем путь к изображению стимула
+        var stimItem = StimuliList.SelectedItem as StimulusItem;
+        if (stimItem?.FilePath == null || !stimItem.IsImage)
+        {
+            MessageBox.Show("OCR доступен только для изображений", "OCR", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Показываем индикатор
+        if (OcrScanBtn != null)
+        {
+            OcrScanBtn.IsEnabled = false;
+            OcrScanBtn.Content = "Распознавание...";
+        }
+        if (TextLayoutInfoLabel != null)
+            TextLayoutInfoLabel.Text = "Выполняется OCR...";
+
+        try
+        {
+            // Выполняем OCR
+            var ocrResult = await OcrTextDetector.DetectTextAsync(stimItem.FilePath, "ru");
+
+            if (ocrResult == null || ocrResult.Words.Count == 0)
+            {
+                // Пробуем английский
+                ocrResult = await OcrTextDetector.DetectTextAsync(stimItem.FilePath, "en");
+            }
+
+            if (ocrResult != null && ocrResult.Words.Count > 0)
+            {
+                // Сохраняем результат
+                _currentOcrResult = ocrResult;
+                _ocrCache[_currentStimUid] = ocrResult;
+
+                // Обновляем настройки
+                var settings = _currentVizSettings.TextAnalysis;
+                settings.Layout = OcrTextDetector.CreateLayoutConfig(ocrResult);
+                settings.IsEnabled = true;
+
+                // Сохраняем конфигурацию
+                SaveTextLayoutSettings(_currentStimUid, settings.Layout);
+                SaveCurrentVisualizationSettings();
+
+                // Обновляем UI
+                UpdateTextToolbarFromSettings(settings);
+                ComputeTextAnalysis(_currentStimUid, settings);
+
+                MessageBox.Show(
+                    $"Распознано {ocrResult.Words.Count} слов в {ocrResult.Lines.Count} строках\n" +
+                    $"Размер шрифта: ~{ocrResult.EstimatedFontSize:F0}px\n" +
+                    $"Межстрочный интервал: ~{ocrResult.EstimatedLineSpacing:F2}",
+                    "OCR завершён", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show("Текст не найден на изображении", "OCR", MessageBoxButton.OK, MessageBoxImage.Warning);
+                if (TextLayoutInfoLabel != null)
+                    TextLayoutInfoLabel.Text = "Текст не найден";
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка OCR: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (TextLayoutInfoLabel != null)
+                TextLayoutInfoLabel.Text = "Ошибка OCR";
+        }
+        finally
+        {
+            if (OcrScanBtn != null)
+            {
+                OcrScanBtn.IsEnabled = true;
+                OcrScanBtn.Content = "Распознать текст (OCR)";
+            }
         }
     }
 
     private void ComputeTextAnalysis(string stimUid, TextAnalysisSettings settings)
     {
-        // 1. Верстка текста
-        _currentTextLayout = TextLayoutEngine.ComputeLayout(settings.Layout);
+        _lastDriftResult = null;
+        _originalTextFixations = null;
 
-        if (_currentTextLayout.IsEmpty)
-        {
-            TextOverlay?.Clear();
-            return;
-        }
-
-        // 2. Получаем фиксации (из первого видимого результата)
+        // 1. Получаем фиксации (из первого видимого результата)
         var firstVisible = EnumerateVisibleResults().FirstOrDefault();
         if (firstVisible == null)
         {
-            TextOverlay?.SetLayout(_currentTextLayout);
-            TextOverlay?.SetBindings(null);
+            TextOverlay?.Clear();
+            UpdateDriftResultLabel(null);
+            if (TextMetricsGrid != null) TextMetricsGrid.ItemsSource = null;
             return;
         }
 
         var fixKey = KF(firstVisible.ResultUid, stimUid);
         if (!_fixCache.TryGetValue(fixKey, out var fixations))
         {
-            // Детектируем фиксации
-            var rawKey = K(firstVisible.ResultUid, stimUid, _detectSettings.Eye);
             var raw = GetRawSamplesForStim(firstVisible.ResultUid, stimUid);
             if (raw.Count > 0)
             {
@@ -5391,98 +5472,214 @@ public partial class AnalysisWindow : Window
             }
         }
 
-        // 3. Коррекция дрифта (если включена)
-        IReadOnlyList<Fixation> correctedFixations = fixations;
-        if (settings.DriftCorrection != DriftCorrectionMethod.None && _currentTextLayout != null)
+        _originalTextFixations = fixations;
+
+        // 2. Создаём layout из OCR результатов (если есть) или из настроек
+        if (_currentOcrResult != null && _ocrCache.ContainsKey(stimUid))
         {
-            var driftResult = ReadingDriftCorrection.CorrectDrift(
-                fixations, _currentTextLayout, settings.DriftCorrection);
-            correctedFixations = driftResult.CorrectedFixations;
+            // Используем реальные координаты слов из OCR
+            _currentTextLayout = OcrTextDetector.CreateLayoutResultFromOcr(_currentOcrResult);
+        }
+        else if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
+        {
+            // Fallback на верстку через FormattedText
+            _currentTextLayout = TextLayoutEngine.ComputeLayout(settings.Layout);
+        }
+        else
+        {
+            _currentTextLayout = null;
         }
 
-        // 4. Вычисляем метрики
-        _currentReadingAnalysis = ReadingMetricsCalculator.ComputeMetrics(
-            correctedFixations,
-            _currentTextLayout,
-            settings,
-            _screenWmm, _screenHmm, _screenW, _screenH,
-            0.6f // Default distance
-        );
+        // 3. Коррекция дрифта (если включена и есть layout)
+        IReadOnlyList<Fixation> correctedFixations = fixations;
+        if (settings.DriftCorrection != DriftCorrectionMethod.None && _currentTextLayout != null && !_currentTextLayout.IsEmpty)
+        {
+            _lastDriftResult = ReadingDriftCorrection.CorrectDrift(
+                fixations, _currentTextLayout, settings.DriftCorrection);
+            correctedFixations = _lastDriftResult.CorrectedFixations;
+        }
+
+        // 4. Вычисляем метрики (только если есть layout)
+        if (_currentTextLayout != null && !_currentTextLayout.IsEmpty)
+        {
+            _currentReadingAnalysis = ReadingMetricsCalculator.ComputeMetrics(
+                correctedFixations,
+                _currentTextLayout,
+                settings,
+                _screenWmm, _screenHmm, _screenW, _screenH,
+                0.6f
+            );
+        }
+        else
+        {
+            _currentReadingAnalysis = null;
+        }
 
         // 5. Обновляем UI
-        TextOverlay?.SetLayout(_currentTextLayout);
-        TextOverlay?.SetBindings(_currentReadingAnalysis.Bindings?.ToList());
+        UpdateTextOverlay(settings);
+        UpdateDriftResultLabel(_lastDriftResult);
 
         if (TextMetricsGrid != null)
         {
-            TextMetricsGrid.ItemsSource = _currentReadingAnalysis.WordMetrics;
+            TextMetricsGrid.ItemsSource = _currentReadingAnalysis?.WordMetrics;
         }
+    }
+
+    private void UpdateTextOverlay(TextAnalysisSettings settings)
+    {
+        if (TextOverlay == null) return;
+
+        // Устанавливаем layout (если есть)
+        TextOverlay.SetLayout(_currentTextLayout);
+
+        // Устанавливаем оригинальные фиксации
+        TextOverlay.SetOriginalFixations(_originalTextFixations);
+
+        // Устанавливаем скорректированные фиксации (только если коррекция применена)
+        if (settings.DriftCorrection != DriftCorrectionMethod.None && _lastDriftResult != null)
+        {
+            TextOverlay.SetCorrectedFixations(_lastDriftResult.CorrectedFixations);
+        }
+        else
+        {
+            TextOverlay.SetCorrectedFixations(null);
+        }
+
+        // Устанавливаем привязки
+        TextOverlay.SetBindings(_currentReadingAnalysis?.Bindings?.ToList());
+
+        // Настраиваем видимость текста (по умолчанию выключено)
+        bool showText = ShowTextOverlayCheck?.IsChecked ?? false;
+        TextOverlay.ShowWordText = showText;
+        TextOverlay.ShowWordBounds = showText;
+        TextOverlay.ShowLineBounds = showText;
+
+        // Настраиваем видимость фиксаций
+        TextOverlay.ShowOriginalFixations = ShowOriginalFixationsCheck?.IsChecked ?? true;
+        TextOverlay.ShowCorrectedFixations = ShowCorrectedFixationsCheck?.IsChecked ?? true;
+
+        TextOverlay.InvalidateVisual();
     }
 
     private void UpdateTextToolbarFromSettings(TextAnalysisSettings settings)
     {
-        if (TextFontCombo != null)
+        _suppressVizUi = true;
+        try
         {
-            foreach (ComboBoxItem item in TextFontCombo.Items)
+            // Обновляем информацию о тексте
+            if (TextLayoutInfoLabel != null)
             {
-                if (item.Content?.ToString() == settings.Layout.FontName)
+                if (_currentOcrResult != null && _currentOcrResult.Words.Count > 0)
                 {
-                    TextFontCombo.SelectedItem = item;
-                    break;
+                    // Текст из OCR
+                    TextLayoutInfoLabel.Text = $"OCR: {_currentOcrResult.Words.Count} слов, {_currentOcrResult.Lines.Count} строк, ~{_currentOcrResult.EstimatedFontSize:F0}px";
+                    TextLayoutInfoLabel.Foreground = new SolidColorBrush(Color.FromRgb(34, 139, 34)); // Green
+                }
+                else if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
+                {
+                    // Текст из сохранённых настроек
+                    var wordCount = settings.Layout.Text.Split(new[] { ' ', '\n', '\r' },
+                        StringSplitOptions.RemoveEmptyEntries).Length;
+                    TextLayoutInfoLabel.Text = $"Текст: {wordCount} слов";
+                    TextLayoutInfoLabel.Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81));
+                }
+                else
+                {
+                    // Текст не распознан
+                    TextLayoutInfoLabel.Text = "Нажмите OCR для распознавания";
+                    TextLayoutInfoLabel.Foreground = new SolidColorBrush(Color.FromRgb(156, 163, 175));
                 }
             }
-        }
 
-        if (TextSizeCombo != null)
-        {
-            var sizeStr = settings.Layout.FontSizePx.ToString("F0");
-            foreach (ComboBoxItem item in TextSizeCombo.Items)
+            // Обновляем выбор метода коррекции
+            if (DriftCorrectionCombo != null)
             {
-                if (item.Content?.ToString() == sizeStr)
+                foreach (ComboBoxItem item in DriftCorrectionCombo.Items)
                 {
-                    TextSizeCombo.SelectedItem = item;
-                    break;
+                    var tag = item.Tag?.ToString();
+                    if (tag == settings.DriftCorrection.ToString())
+                    {
+                        DriftCorrectionCombo.SelectedItem = item;
+                        break;
+                    }
                 }
             }
-        }
 
-        if (TextLineSpacingCombo != null)
+            // Обновляем чекбоксы (текст по умолчанию выключен)
+            if (ShowTextOverlayCheck != null)
+                ShowTextOverlayCheck.IsChecked = false;
+            if (ShowOriginalFixationsCheck != null)
+                ShowOriginalFixationsCheck.IsChecked = true;
+            if (ShowCorrectedFixationsCheck != null)
+                ShowCorrectedFixationsCheck.IsChecked = settings.DriftCorrection != DriftCorrectionMethod.None;
+        }
+        finally
         {
-            var spacingStr = settings.Layout.LineSpacing.ToString("F1", CultureInfo.InvariantCulture);
-            foreach (ComboBoxItem item in TextLineSpacingCombo.Items)
-            {
-                if (item.Content?.ToString() == spacingStr)
-                {
-                    TextLineSpacingCombo.SelectedItem = item;
-                    break;
-                }
-            }
+            _suppressVizUi = false;
         }
     }
 
-    private void TextFont_Changed(object sender, SelectionChangedEventArgs e)
+    private void UpdateDriftResultLabel(DriftCorrectionResult? result)
+    {
+        if (DriftResultLabel == null) return;
+
+        if (result == null)
+        {
+            DriftResultLabel.Text = "";
+            return;
+        }
+
+        var deltaStr = result.Delta.ToString("F1", CultureInfo.InvariantCulture);
+        var kappaStr = result.Kappa.HasValue
+            ? result.Kappa.Value.ToString("F2", CultureInfo.InvariantCulture)
+            : "N/A";
+
+        DriftResultLabel.Text = $"δ={deltaStr}px, κ={kappaStr}";
+    }
+
+    private void DriftCorrection_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressVizUi || _currentStimUid == null || !_isTextAnalysisMode) return;
 
         var settings = _currentVizSettings.TextAnalysis;
 
-        if (TextFontCombo?.SelectedItem is ComboBoxItem fontItem)
-            settings.Layout.FontName = fontItem.Content?.ToString() ?? "Segoe UI";
+        if (DriftCorrectionCombo?.SelectedItem is ComboBoxItem item)
+        {
+            var tag = item.Tag?.ToString() ?? "None";
+            settings.DriftCorrection = tag switch
+            {
+                "Slice" => DriftCorrectionMethod.Slice,
+                "Cluster" => DriftCorrectionMethod.Cluster,
+                "Warp" => DriftCorrectionMethod.Warp,
+                "Auto" => DriftCorrectionMethod.Auto,
+                _ => DriftCorrectionMethod.None
+            };
+        }
 
-        if (TextSizeCombo?.SelectedItem is ComboBoxItem sizeItem &&
-            double.TryParse(sizeItem.Content?.ToString(), out var size))
-            settings.Layout.FontSizePx = size;
-
-        if (TextLineSpacingCombo?.SelectedItem is ComboBoxItem spacingItem &&
-            double.TryParse(spacingItem.Content?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var spacing))
-            settings.Layout.LineSpacing = spacing;
+        // Показываем/скрываем чекбокс скорректированных фиксаций
+        if (ShowCorrectedFixationsCheck != null)
+        {
+            ShowCorrectedFixationsCheck.IsChecked = settings.DriftCorrection != DriftCorrectionMethod.None;
+        }
 
         SaveCurrentVisualizationSettings();
+        ComputeTextAnalysis(_currentStimUid, settings);
+    }
 
-        if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
-        {
-            ComputeTextAnalysis(_currentStimUid, settings);
-        }
+    private void ShowFixations_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressVizUi || TextOverlay == null) return;
+
+        // Управление видимостью текста (границы слов, строк, текст)
+        bool showText = ShowTextOverlayCheck?.IsChecked ?? false;
+        TextOverlay.ShowWordText = showText;
+        TextOverlay.ShowWordBounds = showText;
+        TextOverlay.ShowLineBounds = showText;
+
+        // Управление видимостью фиксаций
+        TextOverlay.ShowOriginalFixations = ShowOriginalFixationsCheck?.IsChecked ?? true;
+        TextOverlay.ShowCorrectedFixations = ShowCorrectedFixationsCheck?.IsChecked ?? true;
+        TextOverlay.InvalidateVisual();
     }
 
     private void EditTextLayout_Click(object sender, RoutedEventArgs e)
@@ -5491,20 +5688,22 @@ public partial class AnalysisWindow : Window
 
         var settings = _currentVizSettings.TextAnalysis;
 
-        // Показываем простой диалог для ввода текста
+        // Показываем диалог для ввода текста и параметров
         var dialog = new Window
         {
-            Title = "Редактирование текста для анализа",
-            Width = 600,
-            Height = 400,
+            Title = "Параметры текста для анализа",
+            Width = 700,
+            Height = 500,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Owner = this
         };
 
-        var grid = new Grid();
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var mainGrid = new Grid();
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
+        // Текст
         var textBox = new System.Windows.Controls.TextBox
         {
             Text = settings.Layout.Text,
@@ -5512,17 +5711,54 @@ public partial class AnalysisWindow : Window
             TextWrapping = TextWrapping.Wrap,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Margin = new Thickness(10),
-            FontSize = 14
+            FontSize = 14,
+            FontFamily = new FontFamily(settings.Layout.FontName)
         };
         Grid.SetRow(textBox, 0);
-        grid.Children.Add(textBox);
+        mainGrid.Children.Add(textBox);
 
+        // Параметры
+        var paramsPanel = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            Margin = new Thickness(10, 0, 10, 10)
+        };
+        Grid.SetRow(paramsPanel, 1);
+
+        paramsPanel.Children.Add(new TextBlock { Text = "Шрифт:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        var fontCombo = new System.Windows.Controls.ComboBox { Width = 130, Margin = new Thickness(0, 0, 15, 0) };
+        foreach (var f in new[] { "Times New Roman", "Arial", "Segoe UI", "Calibri", "Consolas" })
+        {
+            fontCombo.Items.Add(new ComboBoxItem { Content = f, IsSelected = f == settings.Layout.FontName });
+        }
+        paramsPanel.Children.Add(fontCombo);
+
+        paramsPanel.Children.Add(new TextBlock { Text = "Размер:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        var sizeBox = new System.Windows.Controls.TextBox { Text = settings.Layout.FontSizePx.ToString("F0"), Width = 50, Margin = new Thickness(0, 0, 15, 0) };
+        paramsPanel.Children.Add(sizeBox);
+
+        paramsPanel.Children.Add(new TextBlock { Text = "Интервал:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        var spacingBox = new System.Windows.Controls.TextBox { Text = settings.Layout.LineSpacing.ToString("F1", CultureInfo.InvariantCulture), Width = 40, Margin = new Thickness(0, 0, 15, 0) };
+        paramsPanel.Children.Add(spacingBox);
+
+        paramsPanel.Children.Add(new TextBlock { Text = "Отступ X:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        var leftBox = new System.Windows.Controls.TextBox { Text = settings.Layout.PaddingLeft.ToString("F0"), Width = 50, Margin = new Thickness(0, 0, 15, 0) };
+        paramsPanel.Children.Add(leftBox);
+
+        paramsPanel.Children.Add(new TextBlock { Text = "Отступ Y:", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 5, 0) });
+        var topBox = new System.Windows.Controls.TextBox { Text = settings.Layout.PaddingTop.ToString("F0"), Width = 50 };
+        paramsPanel.Children.Add(topBox);
+
+        mainGrid.Children.Add(paramsPanel);
+
+        // Кнопки
         var buttonPanel = new StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
             Margin = new Thickness(10)
         };
+        Grid.SetRow(buttonPanel, 2);
 
         var okBtn = new System.Windows.Controls.Button { Content = "OK", Width = 80, Margin = new Thickness(5) };
         var cancelBtn = new System.Windows.Controls.Button { Content = "Отмена", Width = 80, Margin = new Thickness(5) };
@@ -5532,56 +5768,35 @@ public partial class AnalysisWindow : Window
 
         buttonPanel.Children.Add(okBtn);
         buttonPanel.Children.Add(cancelBtn);
-        Grid.SetRow(buttonPanel, 1);
-        grid.Children.Add(buttonPanel);
+        mainGrid.Children.Add(buttonPanel);
 
-        dialog.Content = grid;
+        dialog.Content = mainGrid;
 
         if (dialog.ShowDialog() == true)
         {
             settings.Layout.Text = textBox.Text;
             settings.IsEnabled = !string.IsNullOrWhiteSpace(textBox.Text);
 
+            if (fontCombo.SelectedItem is ComboBoxItem fontItem)
+                settings.Layout.FontName = fontItem.Content?.ToString() ?? "Times New Roman";
+
+            if (double.TryParse(sizeBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var size))
+                settings.Layout.FontSizePx = size;
+
+            if (double.TryParse(spacingBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var spacing))
+                settings.Layout.LineSpacing = spacing;
+
+            if (double.TryParse(leftBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var left))
+                settings.Layout.PaddingLeft = left;
+
+            if (double.TryParse(topBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var top))
+                settings.Layout.PaddingTop = top;
+
             // Сохраняем настройки
             SaveTextLayoutSettings(_currentStimUid, settings.Layout);
             SaveCurrentVisualizationSettings();
 
             // Перезапускаем анализ
-            ComputeTextAnalysis(_currentStimUid, settings);
-        }
-    }
-
-    private void ApplyDriftCorrection_Click(object sender, RoutedEventArgs e)
-    {
-        if (_currentStimUid == null) return;
-
-        var settings = _currentVizSettings.TextAnalysis;
-
-        // Циклически переключаем метод коррекции
-        settings.DriftCorrection = settings.DriftCorrection switch
-        {
-            DriftCorrectionMethod.None => DriftCorrectionMethod.Slice,
-            DriftCorrectionMethod.Slice => DriftCorrectionMethod.Cluster,
-            DriftCorrectionMethod.Cluster => DriftCorrectionMethod.None,
-            _ => DriftCorrectionMethod.None
-        };
-
-        // Обновляем текст кнопки
-        if (ApplyDriftBtn != null)
-        {
-            ApplyDriftBtn.Content = settings.DriftCorrection switch
-            {
-                DriftCorrectionMethod.None => "Коррекция: Нет",
-                DriftCorrectionMethod.Slice => "Коррекция: Slice",
-                DriftCorrectionMethod.Cluster => "Коррекция: Cluster",
-                _ => "Коррекция дрифта"
-            };
-        }
-
-        SaveCurrentVisualizationSettings();
-
-        if (!string.IsNullOrWhiteSpace(settings.Layout.Text))
-        {
             ComputeTextAnalysis(_currentStimUid, settings);
         }
     }
@@ -5606,19 +5821,11 @@ public partial class AnalysisWindow : Window
 
     private void SaveTextLayoutSettings(string stimUid, TextLayoutConfig config)
     {
-        try
+        var path = GetTextLayoutPath(stimUid);
+        if (!string.IsNullOrWhiteSpace(path))
         {
-            var path = GetTextLayoutPath(stimUid);
-            if (string.IsNullOrWhiteSpace(path)) return;
-
-            var dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrWhiteSpace(dir))
-                Directory.CreateDirectory(dir);
-
-            var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json);
+            TextStimuliLoader.SaveConfig(path, config);
         }
-        catch { }
     }
 
     #endregion

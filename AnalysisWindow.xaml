@@ -438,47 +438,75 @@
                         Background="#F3F4F6" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,10"
                         Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Шрифт:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="TextFontCombo" Width="140" Margin="0,0,16,0" Height="28" SelectionChanged="TextFont_Changed">
-                            <ComboBoxItem Content="Segoe UI" IsSelected="True"/>
-                            <ComboBoxItem Content="Arial"/>
-                            <ComboBoxItem Content="Times New Roman"/>
-                            <ComboBoxItem Content="Consolas"/>
-                            <ComboBoxItem Content="Calibri"/>
+                        <!-- OCR статус и кнопка -->
+                        <Button x:Name="OcrScanBtn"
+                                Content="Распознать текст (OCR)"
+                                Style="{StaticResource PillButtonStyle}"
+                                Height="28" Padding="12,0"
+                                Margin="0,0,12,0"
+                                Click="OcrScan_Click"/>
+
+                        <!-- Информация о тексте -->
+                        <TextBlock x:Name="TextLayoutInfoLabel"
+                                   Text="Текст не распознан"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,16,0"
+                                   FontWeight="SemiBold"
+                                   Foreground="#374151"/>
+
+                        <Border Background="#E5E7EB" Width="1" Height="20" Margin="0,0,16,0"/>
+
+                        <!-- Коррекция дрифта -->
+                        <TextBlock Text="Коррекция:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="DriftCorrectionCombo" Width="90" Height="28" Margin="0,0,8,0" SelectionChanged="DriftCorrection_Changed">
+                            <ComboBoxItem Content="Нет" Tag="None" IsSelected="True"/>
+                            <ComboBoxItem Content="Slice" Tag="Slice"/>
+                            <ComboBoxItem Content="Cluster" Tag="Cluster"/>
+                            <ComboBoxItem Content="Warp" Tag="Warp"/>
+                            <ComboBoxItem Content="Авто" Tag="Auto"/>
                         </ComboBox>
 
-                        <TextBlock Text="Размер:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="TextSizeCombo" Width="70" Margin="0,0,16,0" Height="28" SelectionChanged="TextFont_Changed">
-                            <ComboBoxItem Content="16"/>
-                            <ComboBoxItem Content="18"/>
-                            <ComboBoxItem Content="20"/>
-                            <ComboBoxItem Content="24" IsSelected="True"/>
-                            <ComboBoxItem Content="28"/>
-                            <ComboBoxItem Content="32"/>
-                            <ComboBoxItem Content="36"/>
-                        </ComboBox>
+                        <!-- Результат коррекции -->
+                        <TextBlock x:Name="DriftResultLabel"
+                                   Text=""
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   FontSize="11"
+                                   Foreground="#6B7280"/>
 
-                        <TextBlock Text="Интервал:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="TextLineSpacingCombo" Width="60" Margin="0,0,16,0" Height="28" SelectionChanged="TextFont_Changed">
-                            <ComboBoxItem Content="1.0"/>
-                            <ComboBoxItem Content="1.2"/>
-                            <ComboBoxItem Content="1.5" IsSelected="True"/>
-                            <ComboBoxItem Content="1.8"/>
-                            <ComboBoxItem Content="2.0"/>
-                        </ComboBox>
+                        <Border Background="#E5E7EB" Width="1" Height="20" Margin="0,0,12,0"/>
 
+                        <!-- Отображение -->
+                        <CheckBox x:Name="ShowTextOverlayCheck"
+                                  Content="Текст"
+                                  IsChecked="False"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,8,0"
+                                  Checked="ShowFixations_Changed"
+                                  Unchecked="ShowFixations_Changed"/>
+                        <CheckBox x:Name="ShowOriginalFixationsCheck"
+                                  Content="Исходные"
+                                  IsChecked="True"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,8,0"
+                                  Checked="ShowFixations_Changed"
+                                  Unchecked="ShowFixations_Changed"/>
+                        <CheckBox x:Name="ShowCorrectedFixationsCheck"
+                                  Content="Скорр."
+                                  IsChecked="True"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,12,0"
+                                  Checked="ShowFixations_Changed"
+                                  Unchecked="ShowFixations_Changed"/>
+
+                        <Border Background="#E5E7EB" Width="1" Height="20" Margin="0,0,12,0"/>
+
+                        <!-- Ручная настройка -->
                         <Button x:Name="EditTextBtn"
-                                Content="Редактировать текст"
+                                Content="Настроить"
                                 Style="{StaticResource PillButtonStyle}"
                                 Height="28" Padding="12,0"
-                                Margin="0,0,8,0"
                                 Click="EditTextLayout_Click"/>
-
-                        <Button x:Name="ApplyDriftBtn"
-                                Content="Коррекция дрифта"
-                                Style="{StaticResource PillButtonStyle}"
-                                Height="28" Padding="12,0"
-                                Click="ApplyDriftCorrection_Click"/>
                     </StackPanel>
                 </Border>
                 

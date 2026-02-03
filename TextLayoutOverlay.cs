@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -17,7 +18,7 @@ using Point = System.Windows.Point;
 namespace NeuroBureau.Experiment;
 
 /// <summary>
-/// Overlay для визуализации разметки текста: границы слов, строк и привязки фиксаций
+/// Overlay для визуализации разметки текста: границы слов, строк и фиксаций (до/после коррекции)
 /// </summary>
 public sealed class TextLayoutOverlay : FrameworkElement
 {
@@ -26,26 +27,39 @@ public sealed class TextLayoutOverlay : FrameworkElement
     private int? _selectedWordIndex;
     private int? _hoveredWordIndex;
 
-    // Настройки отображения
+    // Оригинальные фиксации (до коррекции)
+    private IReadOnlyList<Fixation>? _originalFixations;
+    // Скорректированные фиксации (после drift correction)
+    private IReadOnlyList<Fixation>? _correctedFixations;
+
+    // Режим отображения
+    public bool ShowOriginalFixations { get; set; } = true;
+    public bool ShowCorrectedFixations { get; set; } = true;
+    public bool ShowScanPath { get; set; } = true;
+
+    // Настройки отображения границ
     public bool ShowWordBounds { get; set; } = true;
     public bool ShowLineBounds { get; set; } = true;
-    public bool ShowFixations { get; set; } = true;
-    public bool ShowBindingLines { get; set; } = true;
+    public bool ShowBindingLines { get; set; } = false;
     public bool ShowWordNumbers { get; set; } = false;
-    public bool ShowWordText { get; set; } = false;
+    public bool ShowWordText { get; set; } = true;
 
     // Цвета
     public Color WordBoundsColor { get; set; } = Color.FromArgb(180, 0, 120, 255);
     public Color LineBoundsColor { get; set; } = Color.FromArgb(100, 0, 200, 100);
-    public Color FixationColor { get; set; } = Color.FromArgb(180, 255, 100, 0);
-    public Color BindingLineColor { get; set; } = Color.FromArgb(100, 128, 128, 128);
+    public Color OriginalFixationColor { get; set; } = Color.FromArgb(200, 60, 214, 231); // Cyan - как в Python
+    public Color CorrectedFixationColor { get; set; } = Color.FromArgb(220, 255, 100, 0); // Orange
+    public Color ScanPathColor { get; set; } = Color.FromArgb(120, 100, 100, 100);
+    public Color BindingLineColor { get; set; } = Color.FromArgb(80, 128, 128, 128);
     public Color SelectedWordColor { get; set; } = Color.FromArgb(100, 255, 255, 0);
     public Color HoveredWordColor { get; set; } = Color.FromArgb(60, 255, 255, 0);
+    public Color TextColor { get; set; } = Color.FromArgb(255, 0, 0, 0);
 
     // Размеры
     public double WordBoundsThickness { get; set; } = 1.5;
     public double LineBoundsThickness { get; set; } = 1.0;
-    public double FixationRadius { get; set; } = 6;
+    public double FixationBaseRadius { get; set; } = 8;
+    public double ScanPathThickness { get; set; } = 1.5;
     public double FontSize { get; set; } = 10;
     public FontFamily FontFamily { get; set; } = new("Segoe UI");
 
@@ -60,7 +74,25 @@ public sealed class TextLayoutOverlay : FrameworkElement
     }
 
     /// <summary>
-    /// Устанавливает привязки фиксаций к тексту
+    /// Устанавливает оригинальные фиксации (до коррекции дрифта)
+    /// </summary>
+    public void SetOriginalFixations(IReadOnlyList<Fixation>? fixations)
+    {
+        _originalFixations = fixations;
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Устанавливает скорректированные фиксации (после drift correction)
+    /// </summary>
+    public void SetCorrectedFixations(IReadOnlyList<Fixation>? fixations)
+    {
+        _correctedFixations = fixations;
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Устанавливает привязки фиксаций к тексту (для отображения связей)
     /// </summary>
     public void SetBindings(List<FixationTextBinding>? bindings)
     {
@@ -99,6 +131,8 @@ public sealed class TextLayoutOverlay : FrameworkElement
     {
         _layout = null;
         _bindings = null;
+        _originalFixations = null;
+        _correctedFixations = null;
         _selectedWordIndex = null;
         _hoveredWordIndex = null;
         UpdateVisibility();
@@ -107,29 +141,48 @@ public sealed class TextLayoutOverlay : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        if (_layout == null || _layout.IsEmpty) return;
+        // Всегда рисуем фиксации, даже если нет layout
+        var hasFixations = (_originalFixations?.Count > 0) || (_correctedFixations?.Count > 0);
+        var hasLayout = _layout != null && !_layout.IsEmpty;
+
+        if (!hasFixations && !hasLayout) return;
 
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
-        // 1. Рисуем границы строк
-        if (ShowLineBounds)
+        // 1. Рисуем границы строк (если есть layout)
+        if (hasLayout && ShowLineBounds)
         {
             DrawLineBounds(dc);
         }
 
         // 2. Рисуем выделение/hover слов
-        DrawWordHighlights(dc);
+        if (hasLayout)
+        {
+            DrawWordHighlights(dc);
+        }
 
-        // 3. Рисуем границы слов
-        if (ShowWordBounds)
+        // 3. Рисуем границы слов и текст
+        if (hasLayout && ShowWordBounds)
         {
             DrawWordBounds(dc, dpi);
         }
 
-        // 4. Рисуем привязки фиксаций
-        if (ShowFixations && _bindings != null)
+        // 4. Рисуем оригинальные фиксации (до коррекции) - CYAN
+        if (ShowOriginalFixations && _originalFixations?.Count > 0)
         {
-            DrawFixations(dc);
+            DrawFixationsWithScanPath(dc, _originalFixations, OriginalFixationColor, 0.7);
+        }
+
+        // 5. Рисуем скорректированные фиксации - ORANGE
+        if (ShowCorrectedFixations && _correctedFixations?.Count > 0)
+        {
+            DrawFixationsWithScanPath(dc, _correctedFixations, CorrectedFixationColor, 1.0);
+        }
+
+        // 6. Рисуем линии привязки к словам (если включено)
+        if (ShowBindingLines && _bindings != null && hasLayout)
+        {
+            DrawBindingLines(dc);
         }
     }
 
@@ -153,10 +206,6 @@ public sealed class TextLayoutOverlay : FrameworkElement
             double xEnd = line.X + line.Width + 10;
 
             dc.DrawLine(pen, new Point(xStart, y), new Point(xEnd, y));
-
-            // Рисуем вертикальные границы строки
-            dc.DrawLine(pen, new Point(xStart, line.Y), new Point(xStart, line.Y + line.Height));
-            dc.DrawLine(pen, new Point(xEnd, line.Y), new Point(xEnd, line.Y + line.Height));
         }
     }
 
@@ -191,6 +240,8 @@ public sealed class TextLayoutOverlay : FrameworkElement
         pen.Freeze();
 
         var typeface = new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        var textBrush = new SolidColorBrush(TextColor);
+        textBrush.Freeze();
 
         foreach (var word in _layout!.Words)
         {
@@ -215,13 +266,21 @@ public sealed class TextLayoutOverlay : FrameworkElement
             // Текст слова (если включено)
             if (ShowWordText)
             {
+                var textTypeface = new Typeface(
+                    new FontFamily(_layout.Config.FontName),
+                    FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+
+                // Используем реальную высоту слова из OCR (word.Height),
+                // а не config.FontSizePx, который может быть неточным
+                double fontSize = word.Height > 0 ? word.Height : _layout.Config.FontSizePx;
+
                 var ft = new FormattedText(
                     word.Text,
                     CultureInfo.InvariantCulture,
                     FlowDirection.LeftToRight,
-                    typeface,
-                    FontSize,
-                    Brushes.Black,
+                    textTypeface,
+                    fontSize,
+                    textBrush,
                     dpi);
 
                 dc.DrawText(ft, new Point(word.X, word.Y));
@@ -229,57 +288,70 @@ public sealed class TextLayoutOverlay : FrameworkElement
         }
     }
 
-    private void DrawFixations(DrawingContext dc)
+    private void DrawFixationsWithScanPath(DrawingContext dc, IReadOnlyList<Fixation> fixations, Color color, double opacity)
     {
-        if (_bindings == null || _bindings.Count == 0) return;
+        if (fixations.Count == 0) return;
 
-        var fixBrush = new SolidColorBrush(FixationColor);
+        var fixBrush = new SolidColorBrush(Color.FromArgb((byte)(color.A * opacity), color.R, color.G, color.B));
         fixBrush.Freeze();
 
         var fixPen = new Pen(fixBrush, 1.5);
         fixPen.Freeze();
 
-        var linePen = new Pen(new SolidColorBrush(BindingLineColor), 1);
-        linePen.Freeze();
-
-        foreach (var binding in _bindings)
+        // Scan path линии
+        if (ShowScanPath && fixations.Count > 1)
         {
-            var fix = binding.Fixation;
+            var pathColor = Color.FromArgb((byte)(ScanPathColor.A * opacity), color.R, color.G, color.B);
+            var pathPen = new Pen(new SolidColorBrush(pathColor), ScanPathThickness);
+            pathPen.Freeze();
+
+            for (int i = 1; i < fixations.Count; i++)
+            {
+                var prev = fixations[i - 1];
+                var curr = fixations[i];
+                dc.DrawLine(pathPen, new Point(prev.Xpx, prev.Ypx), new Point(curr.Xpx, curr.Ypx));
+            }
+        }
+
+        // Точки фиксаций
+        foreach (var fix in fixations)
+        {
             var fixPoint = new Point(fix.Xpx, fix.Ypx);
 
-            // Рисуем линию к слову (если включено и есть привязка)
-            if (ShowBindingLines && binding.WordIndex.HasValue &&
-                binding.WordIndex.Value < _layout!.Words.Count)
-            {
-                var word = _layout.Words[binding.WordIndex.Value];
-                var wordCenter = new Point(word.CenterX, word.CenterY);
-                dc.DrawLine(linePen, fixPoint, wordCenter);
-            }
-
-            // Рисуем точку фиксации
-            double radius = FixationRadius;
-
             // Размер зависит от длительности
+            double radius = FixationBaseRadius;
             if (fix.DurSec > 0)
             {
-                double k = Math.Clamp(fix.DurSec / 0.5, 0.5, 2.0);
+                double k = Math.Clamp(fix.DurSec / 0.3, 0.5, 2.5);
                 radius *= k;
             }
 
             dc.DrawEllipse(fixBrush, fixPen, fixPoint, radius, radius);
+        }
+    }
 
-            // Если фиксация вне слов, показываем крестик
-            if (!binding.WordIndex.HasValue)
-            {
-                var crossPen = new Pen(Brushes.Red, 1);
-                crossPen.Freeze();
-                dc.DrawLine(crossPen,
-                    new Point(fix.Xpx - 4, fix.Ypx - 4),
-                    new Point(fix.Xpx + 4, fix.Ypx + 4));
-                dc.DrawLine(crossPen,
-                    new Point(fix.Xpx + 4, fix.Ypx - 4),
-                    new Point(fix.Xpx - 4, fix.Ypx + 4));
-            }
+    private void DrawBindingLines(DrawingContext dc)
+    {
+        if (_bindings == null || _bindings.Count == 0 || _layout == null) return;
+
+        var linePen = new Pen(new SolidColorBrush(BindingLineColor), 1)
+        {
+            DashStyle = DashStyles.Dot
+        };
+        linePen.Freeze();
+
+        foreach (var binding in _bindings)
+        {
+            if (!binding.WordIndex.HasValue) continue;
+            if (binding.WordIndex.Value >= _layout.Words.Count) continue;
+
+            var fix = binding.Fixation;
+            var word = _layout.Words[binding.WordIndex.Value];
+
+            var fixPoint = new Point(fix.Xpx, fix.Ypx);
+            var wordCenter = new Point(word.CenterX, word.CenterY);
+
+            dc.DrawLine(linePen, fixPoint, wordCenter);
         }
     }
 
@@ -309,8 +381,10 @@ public sealed class TextLayoutOverlay : FrameworkElement
 
     private void UpdateVisibility()
     {
-        Visibility = (_layout != null && !_layout.IsEmpty)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var hasContent = (_layout != null && !_layout.IsEmpty) ||
+                        (_originalFixations?.Count > 0) ||
+                        (_correctedFixations?.Count > 0);
+
+        Visibility = hasContent ? Visibility.Visible : Visibility.Collapsed;
     }
 }

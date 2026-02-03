@@ -35,6 +35,8 @@ public static class ReadingDriftCorrection
         {
             DriftCorrectionMethod.Slice => ApplySlice(fixations, layout),
             DriftCorrectionMethod.Cluster => ApplyCluster(fixations, layout),
+            DriftCorrectionMethod.Warp => ApplyWarp(fixations, layout),
+            DriftCorrectionMethod.Auto => AutoCorrect(fixations, layout),
             _ => new DriftCorrectionResult
             {
                 CorrectedFixations = fixations.ToArray(),
@@ -59,15 +61,28 @@ public static class ReadingDriftCorrection
             };
         }
 
-        // Пробуем оба метода и выбираем лучший по kappa
-        var sliceResult = ApplySlice(fixations, layout);
-        var clusterResult = ApplyCluster(fixations, layout);
+        // Пробуем все методы и выбираем лучший по (kappa, |delta|)
+        var results = new[]
+        {
+            ApplySlice(fixations, layout),
+            ApplyCluster(fixations, layout),
+            ApplyWarp(fixations, layout)
+        };
 
-        // Выбираем метод с лучшим kappa (надёжностью)
-        if (clusterResult.Kappa > sliceResult.Kappa)
-            return clusterResult;
+        // Выбираем метод с лучшим kappa (при равном kappa - меньший delta)
+        DriftCorrectionResult best = results[0];
+        foreach (var r in results)
+        {
+            double rKappa = r.Kappa ?? 0;
+            double bestKappa = best.Kappa ?? 0;
+            if (rKappa > bestKappa ||
+                (Math.Abs(rKappa - bestKappa) < 0.01 && Math.Abs(r.Delta) < Math.Abs(best.Delta)))
+            {
+                best = r;
+            }
+        }
 
-        return sliceResult;
+        return best;
     }
 
     #region Slice Method
@@ -291,6 +306,184 @@ public static class ReadingDriftCorrection
         }
 
         return result;
+    }
+
+    #endregion
+
+    #region Warp Method
+
+    /// <summary>
+    /// Warp: Dynamic Time Warping - нелинейная коррекция с учётом прогрессии чтения
+    /// Учитывает, что читатель движется слева направо и сверху вниз
+    /// </summary>
+    private static DriftCorrectionResult ApplyWarp(
+        IReadOnlyList<Fixation> fixations,
+        TextLayoutResult layout)
+    {
+        if (layout.Lines.Count == 0)
+        {
+            return ApplySlice(fixations, layout);
+        }
+
+        var corrected = new Fixation[fixations.Count];
+        var deltas = new List<double>();
+
+        // Разбиваем фиксации на "проходы" по строкам
+        // Проход = последовательность фиксаций до регрессии на предыдущую строку
+        var passes = DetectReadingPasses(fixations, layout);
+
+        foreach (var pass in passes)
+        {
+            // Для каждого прохода определяем, какой строке он соответствует
+            int lineIndex = EstimateLineForPass(pass.Fixations, layout, pass.EstimatedLine);
+
+            if (lineIndex >= 0 && lineIndex < layout.Lines.Count)
+            {
+                var line = layout.Lines[lineIndex];
+                foreach (var (fix, idx) in pass.Fixations)
+                {
+                    float newY = (float)line.CenterY;
+                    float delta = newY - fix.Ypx;
+                    deltas.Add(delta);
+                    corrected[idx] = new Fixation(fix.StartSec, fix.DurSec, fix.Xpx, newY);
+                }
+            }
+            else
+            {
+                // Fallback: оставляем как есть
+                foreach (var (fix, idx) in pass.Fixations)
+                {
+                    corrected[idx] = fix;
+                }
+            }
+        }
+
+        double avgDelta = deltas.Count > 0 ? deltas.Average() : 0;
+        double kappa = CalculateKappa(deltas);
+
+        return new DriftCorrectionResult
+        {
+            CorrectedFixations = corrected,
+            Delta = avgDelta,
+            Kappa = kappa,
+            Method = DriftCorrectionMethod.Warp
+        };
+    }
+
+    /// <summary>
+    /// Обнаруживает "проходы" чтения - группы последовательных фиксаций на одной строке
+    /// </summary>
+    private static List<ReadingPass> DetectReadingPasses(
+        IReadOnlyList<Fixation> fixations,
+        TextLayoutResult layout)
+    {
+        var passes = new List<ReadingPass>();
+        if (fixations.Count == 0) return passes;
+
+        double lineHeight = layout.LineHeight;
+        double sweepThreshold = lineHeight * 0.5; // Порог для определения перехода на новую строку
+
+        var currentPass = new ReadingPass();
+        int estimatedLine = 0;
+
+        for (int i = 0; i < fixations.Count; i++)
+        {
+            var fix = fixations[i];
+
+            if (currentPass.Fixations.Count == 0)
+            {
+                currentPass.Fixations.Add((fix, i));
+                currentPass.EstimatedLine = estimatedLine;
+                continue;
+            }
+
+            var prevFix = currentPass.Fixations[^1].Fix;
+
+            // Проверяем, это sweep (переход на новую строку)?
+            bool isSweep = fix.Xpx < prevFix.Xpx - 100 && // Значительный скачок влево
+                          Math.Abs(fix.Ypx - prevFix.Ypx) > sweepThreshold; // И вертикальное смещение
+
+            // Проверяем, это регрессия на предыдущую строку?
+            bool isRegressionUp = fix.Ypx < prevFix.Ypx - sweepThreshold;
+
+            if (isSweep)
+            {
+                // Завершаем текущий проход, начинаем новый
+                if (currentPass.Fixations.Count > 0)
+                {
+                    passes.Add(currentPass);
+                }
+                estimatedLine++;
+                currentPass = new ReadingPass { EstimatedLine = estimatedLine };
+                currentPass.Fixations.Add((fix, i));
+            }
+            else if (isRegressionUp)
+            {
+                // Регрессия - новый проход, но на предыдущей строке
+                if (currentPass.Fixations.Count > 0)
+                {
+                    passes.Add(currentPass);
+                }
+                estimatedLine = Math.Max(0, estimatedLine - 1);
+                currentPass = new ReadingPass { EstimatedLine = estimatedLine };
+                currentPass.Fixations.Add((fix, i));
+            }
+            else
+            {
+                // Продолжаем текущий проход
+                currentPass.Fixations.Add((fix, i));
+            }
+        }
+
+        // Добавляем последний проход
+        if (currentPass.Fixations.Count > 0)
+        {
+            passes.Add(currentPass);
+        }
+
+        return passes;
+    }
+
+    /// <summary>
+    /// Оценивает, какой строке соответствует проход
+    /// </summary>
+    private static int EstimateLineForPass(
+        List<(Fixation Fix, int Idx)> passFixations,
+        TextLayoutResult layout,
+        int estimatedLine)
+    {
+        if (passFixations.Count == 0) return estimatedLine;
+
+        // Используем медианную Y-координату прохода
+        var yValues = passFixations.Select(f => (double)f.Fix.Ypx).OrderBy(y => y).ToList();
+        double medianY = yValues[yValues.Count / 2];
+
+        // Находим ближайшую строку
+        int bestLine = 0;
+        double bestDist = double.MaxValue;
+
+        for (int i = 0; i < layout.Lines.Count; i++)
+        {
+            double dist = Math.Abs(layout.Lines[i].CenterY - medianY);
+
+            // Добавляем штраф за несоответствие ожидаемой строке
+            // (учитываем, что чтение идёт сверху вниз)
+            double penalty = Math.Abs(i - estimatedLine) * layout.LineHeight * 0.3;
+
+            if (dist + penalty < bestDist)
+            {
+                bestDist = dist + penalty;
+                bestLine = i;
+            }
+        }
+
+        return bestLine;
+    }
+
+    private class ReadingPass
+    {
+        public List<(Fixation Fix, int Idx)> Fixations { get; } = new();
+        public int EstimatedLine { get; set; }
     }
 
     #endregion
