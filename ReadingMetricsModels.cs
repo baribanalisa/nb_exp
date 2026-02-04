@@ -93,8 +93,11 @@ public sealed class WordReadingMetrics
     /// <summary>Initial Landing Position - позиция первой фиксации (0-1, относительно слова)</summary>
     public double InitialLandingPosition { get; set; }
 
-    /// <summary>Initial Landing Position (characters) - позиция в символах</summary>
-    public double InitialLandingPositionChar { get; set; }
+    /// <summary>Initial Landing Position (characters) - позиция в символах (1-based как в eyekit)</summary>
+    public int? InitialLandingPositionChar { get; set; }
+
+    /// <summary>Initial Landing Distance - расстояние от левого края слова до первой фиксации (px)</summary>
+    public double? InitialLandingDistancePx { get; set; }
 
     /// <summary>Количество регрессий В это слово</summary>
     public int NumberOfRegressionsIn { get; set; }

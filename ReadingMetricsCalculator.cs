@@ -114,7 +114,7 @@ public static class ReadingMetricsCalculator
     }
 
     /// <summary>
-    /// Вычисляет метрики чтения для каждого слова
+    /// Вычисляет метрики чтения для каждого слова (алгоритмы как в eyekit)
     /// </summary>
     public static WordReadingMetrics[] ComputeWordMetrics(
         List<FixationTextBinding> bindings,
@@ -130,151 +130,350 @@ public static class ReadingMetricsCalculator
 
         if (bindings.Count == 0)
         {
-            // Все слова пропущены
             foreach (var m in metrics)
                 m.WasSkipped = true;
             return metrics;
         }
 
-        // Группируем фиксации по словам
-        var wordFixations = bindings
-            .Where(b => b.WordIndex.HasValue)
-            .GroupBy(b => b.WordIndex!.Value)
-            .ToDictionary(g => g.Key, g => g.OrderBy(b => b.Fixation.StartSec).ToList());
+        // Сортируем фиксации по времени
+        var sortedBindings = bindings.OrderBy(b => b.Fixation.StartSec).ToList();
 
-        // Определяем "правую границу" чтения для каждой фиксации
-        // Это нужно для определения first-pass vs second-pass
-        int maxWordReached = -1;
-        var firstPassEnd = new Dictionary<int, int>(); // wordIndex -> sequenceIndex когда закончился first-pass
-
-        foreach (var b in bindings.OrderBy(b => b.SequenceIndex))
+        // Вычисляем метрики для каждого слова
+        foreach (var word in layout.Words)
         {
-            if (b.WordIndex.HasValue)
+            var m = metrics[word.Index];
+
+            // number_of_fixations: количество фиксаций на слове
+            m.FixationCount = CountFixationsOnWord(sortedBindings, word);
+
+            if (m.FixationCount == 0)
             {
-                int wordIdx = b.WordIndex.Value;
-
-                // Если это первое посещение слова и мы уже были правее - это second-pass
-                if (!firstPassEnd.ContainsKey(wordIdx))
-                {
-                    if (wordIdx < maxWordReached)
-                    {
-                        // Первая фиксация на этом слове уже является second-pass
-                        firstPassEnd[wordIdx] = -1; // Нет first-pass
-                    }
-                }
-
-                // Обновляем максимальную достигнутую позицию
-                if (wordIdx > maxWordReached)
-                    maxWordReached = wordIdx;
-            }
-        }
-
-        // Теперь вычисляем метрики
-        foreach (var (wordIdx, fixes) in wordFixations)
-        {
-            var m = metrics[wordIdx];
-            var word = layout.Words[wordIdx];
-
-            m.FixationCount = fixes.Count;
-            m.TotalFixationDuration = fixes.Sum(f => f.Fixation.DurSec);
-
-            // First Fixation Duration
-            var firstFix = fixes[0];
-            m.FirstFixationDuration = firstFix.Fixation.DurSec;
-
-            // Initial Landing Position (0-1, относительно слова)
-            if (word.Width > 0)
-            {
-                m.InitialLandingPosition = Math.Clamp(
-                    (firstFix.Fixation.Xpx - word.X) / word.Width, 0, 1);
+                m.WasSkipped = true;
+                continue;
             }
 
-            // Initial Landing Position в символах
-            m.InitialLandingPositionChar = m.InitialLandingPosition * word.Text.Length;
+            // total_fixation_duration: сумма всех фиксаций на слове
+            m.TotalFixationDuration = TotalFixationDuration(sortedBindings, word);
 
-            // First of Many Duration
-            if (fixes.Count > 1)
+            // initial_fixation_duration: длительность первой фиксации
+            m.FirstFixationDuration = InitialFixationDuration(sortedBindings, word);
+
+            // first_of_many_duration: длительность первой фиксации если их > 1
+            var fom = FirstOfManyDuration(sortedBindings, word);
+            if (fom.HasValue)
             {
-                m.FirstOfManyDuration = firstFix.Fixation.DurSec;
+                m.FirstOfManyDuration = fom.Value;
                 m.WasRefixated = true;
             }
 
-            // Определяем first-pass vs second-pass фиксации
-            bool hasFirstPass = !firstPassEnd.TryGetValue(wordIdx, out int fpEnd) || fpEnd != -1;
+            // gaze_duration: сумма фиксаций до первого выхода из слова
+            m.GazeDuration = GazeDuration(sortedBindings, word);
 
-            if (hasFirstPass)
-            {
-                // Находим момент, когда взгляд впервые ушёл правее этого слова
-                int firstExitRight = -1;
-                for (int i = 0; i < bindings.Count; i++)
-                {
-                    var b = bindings[i];
-                    if (b.WordIndex.HasValue && b.WordIndex.Value > wordIdx)
-                    {
-                        // Проверяем, были ли фиксации на текущем слове до этого
-                        bool hadFixOnWord = bindings.Take(i).Any(
-                            bb => bb.WordIndex == wordIdx);
-                        if (hadFixOnWord)
-                        {
-                            firstExitRight = i;
-                            break;
-                        }
-                    }
-                }
+            // go_past_duration: время от входа до выхода ВПРАВО (включая регрессии)
+            m.GoPastDuration = GoPastDuration(sortedBindings, word);
 
-                // Gaze Duration = сумма фиксаций до первого выхода правее
-                double gazeDur = 0;
-                double goPastDur = 0;
-                bool countingGoPast = false;
+            // second_pass_duration: сумма фиксаций во втором проходе
+            m.SecondPassDuration = SecondPassDuration(sortedBindings, word);
 
-                foreach (var f in fixes)
-                {
-                    if (firstExitRight < 0 || f.SequenceIndex < firstExitRight)
-                    {
-                        gazeDur += f.Fixation.DurSec;
-                    }
-                    else
-                    {
-                        m.SecondPassDuration += f.Fixation.DurSec;
-                    }
-                }
+            // initial_landing_position и initial_landing_distance
+            var (landingPosChar, landingPosFrac, landingDistPx) =
+                InitialLandingPosition(sortedBindings, word);
+            m.InitialLandingPositionChar = landingPosChar;
+            m.InitialLandingPosition = landingPosFrac;
+            m.InitialLandingDistancePx = landingDistPx;
 
-                m.GazeDuration = gazeDur;
-
-                // Go-past Duration: время от первой фиксации до выхода правее
-                // включая регрессии внутри этого интервала
-                if (firstExitRight > 0)
-                {
-                    int firstOnWord = fixes[0].SequenceIndex;
-                    for (int i = firstOnWord; i < firstExitRight && i < bindings.Count; i++)
-                    {
-                        goPastDur += bindings[i].Fixation.DurSec;
-                    }
-                    m.GoPastDuration = goPastDur;
-                }
-                else
-                {
-                    // Не вышли правее - go-past = total duration текущего слова
-                    m.GoPastDuration = m.TotalFixationDuration;
-                }
-            }
-            else
-            {
-                // Весь second-pass
-                m.SecondPassDuration = m.TotalFixationDuration;
-            }
+            // number_of_regressions_in
+            m.NumberOfRegressionsIn = NumberOfRegressionsIn(sortedBindings, word);
         }
 
-        // Помечаем пропущенные слова
-        foreach (var m in metrics)
-        {
-            m.WasSkipped = m.FixationCount == 0;
-        }
-
-        // Считаем регрессии
-        ComputeRegressions(bindings, metrics);
+        // Считаем регрессии OUT
+        ComputeRegressionsOut(sortedBindings, metrics);
 
         return metrics;
+    }
+
+    #region Eyekit-style Measure Functions
+
+    /// <summary>
+    /// Проверяет, находится ли фиксация внутри слова (как eyekit "fixation in interest_area")
+    /// </summary>
+    private static bool IsFixationInWord(FixationTextBinding binding, TextWord word)
+    {
+        return binding.WordIndex == word.Index;
+    }
+
+    /// <summary>
+    /// Проверяет, находится ли слово слева от фиксации (is_left_of в eyekit)
+    /// </summary>
+    private static bool IsWordLeftOf(TextWord word, FixationTextBinding binding)
+    {
+        // word.x_br < fixation.x (правый край слова левее X фиксации)
+        return (word.X + word.Width) < binding.Fixation.Xpx;
+    }
+
+    /// <summary>
+    /// Проверяет, находится ли слово перед фиксацией (is_before в eyekit для LTR)
+    /// Для LTR текста: is_before = is_left_of
+    /// </summary>
+    private static bool IsWordBefore(TextWord word, FixationTextBinding binding)
+    {
+        return IsWordLeftOf(word, binding);
+    }
+
+    /// <summary>
+    /// number_of_fixations (eyekit)
+    /// </summary>
+    private static int CountFixationsOnWord(List<FixationTextBinding> bindings, TextWord word)
+    {
+        int count = 0;
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+                count++;
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// initial_fixation_duration (eyekit): длительность первой фиксации на слове
+    /// </summary>
+    private static double InitialFixationDuration(List<FixationTextBinding> bindings, TextWord word)
+    {
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+                return b.Fixation.DurSec;
+        }
+        return 0;
+    }
+
+    /// <summary>
+    /// first_of_many_duration (eyekit): длительность первой фиксации, только если их > 1
+    /// </summary>
+    private static double? FirstOfManyDuration(List<FixationTextBinding> bindings, TextWord word)
+    {
+        double? duration = null;
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+            {
+                if (duration.HasValue)
+                    return duration; // вторая фиксация найдена, возвращаем первую
+                duration = b.Fixation.DurSec;
+            }
+        }
+        return null; // только одна фиксация или ни одной
+    }
+
+    /// <summary>
+    /// total_fixation_duration (eyekit): сумма всех фиксаций на слове
+    /// </summary>
+    private static double TotalFixationDuration(List<FixationTextBinding> bindings, TextWord word)
+    {
+        double duration = 0;
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+                duration += b.Fixation.DurSec;
+        }
+        return duration;
+    }
+
+    /// <summary>
+    /// gaze_duration (eyekit): сумма фиксаций до первого выхода из слова
+    /// </summary>
+    private static double GazeDuration(List<FixationTextBinding> bindings, TextWord word)
+    {
+        double duration = 0;
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+            {
+                duration += b.Fixation.DurSec;
+            }
+            else if (duration > 0)
+            {
+                // Была хотя бы одна фиксация на слове, и эта уже вне - выходим
+                break;
+            }
+        }
+        return duration;
+    }
+
+    /// <summary>
+    /// go_past_duration (eyekit): время от входа до выхода ВПРАВО
+    /// </summary>
+    private static double GoPastDuration(List<FixationTextBinding> bindings, TextWord word)
+    {
+        double duration = 0;
+        bool entered = false;
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+            {
+                entered = true;
+                duration += b.Fixation.DurSec;
+            }
+            else if (entered)
+            {
+                // Вошли ранее, сейчас вне слова
+                if (IsWordBefore(word, b))
+                {
+                    // Слово теперь слева от фиксации = вышли вправо
+                    break;
+                }
+                // Вышли влево (регрессия), продолжаем считать
+                duration += b.Fixation.DurSec;
+            }
+        }
+        return duration;
+    }
+
+    /// <summary>
+    /// second_pass_duration (eyekit): сумма фиксаций во втором проходе
+    /// </summary>
+    private static double SecondPassDuration(List<FixationTextBinding> bindings, TextWord word)
+    {
+        double duration = 0;
+        int? currentPass = null;
+        int nextPass = 1;
+
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+            {
+                if (!currentPass.HasValue)
+                {
+                    // Первая фиксация в новом проходе
+                    currentPass = nextPass;
+                }
+                if (currentPass == 2)
+                {
+                    duration += b.Fixation.DurSec;
+                }
+            }
+            else if (currentPass == 1)
+            {
+                // Первая фиксация, выходящая из первого прохода
+                currentPass = null;
+                nextPass++;
+            }
+            else if (currentPass == 2)
+            {
+                // Первая фиксация, выходящая из второго прохода
+                break;
+            }
+        }
+        return duration;
+    }
+
+    /// <summary>
+    /// initial_landing_position и initial_landing_distance (eyekit)
+    /// Возвращает (позиция в символах 1-based, позиция 0-1, расстояние в px)
+    /// </summary>
+    private static (int? charPos, double fracPos, double? distPx) InitialLandingPosition(
+        List<FixationTextBinding> bindings, TextWord word)
+    {
+        foreach (var b in bindings)
+        {
+            if (IsFixationInWord(b, word))
+            {
+                // Расстояние от левого края слова
+                double distPx = Math.Abs(b.Fixation.Xpx - word.X);
+
+                // Позиция как доля (0-1)
+                double fracPos = 0;
+                if (word.Width > 0)
+                {
+                    fracPos = Math.Clamp((b.Fixation.Xpx - word.X) / word.Width, 0, 1);
+                }
+
+                // Позиция в символах (1-based как в eyekit)
+                int charPos = 1;
+                if (word.Text.Length > 0 && word.Width > 0)
+                {
+                    double charWidth = word.Width / word.Text.Length;
+                    charPos = Math.Clamp(
+                        (int)Math.Floor((b.Fixation.Xpx - word.X) / charWidth) + 1,
+                        1, word.Text.Length);
+                }
+
+                return (charPos, fracPos, distPx);
+            }
+        }
+        return (null, 0, null);
+    }
+
+    /// <summary>
+    /// number_of_regressions_in (eyekit): количество регрессий обратно в слово
+    /// </summary>
+    private static int NumberOfRegressionsIn(List<FixationTextBinding> bindings, TextWord word)
+    {
+        // Найти индекс первого выхода из слова
+        bool enteredWord = false;
+        int? firstExitIndex = null;
+
+        for (int i = 0; i < bindings.Count; i++)
+        {
+            var b = bindings[i];
+            if (IsFixationInWord(b, word))
+            {
+                enteredWord = true;
+            }
+            else if (enteredWord)
+            {
+                firstExitIndex = i;
+                break;
+            }
+        }
+
+        if (!firstExitIndex.HasValue)
+            return 0; // Слово никогда не покидали
+
+        // Считаем регрессии после первого выхода
+        int count = 0;
+        for (int i = firstExitIndex.Value + 1; i < bindings.Count; i++)
+        {
+            var prev = bindings[i - 1];
+            var curr = bindings[i];
+
+            // Если предыдущая НЕ на слове, а текущая НА слове
+            if (!IsFixationInWord(prev, word) && IsFixationInWord(curr, word))
+            {
+                // И фиксация движется влево (регрессия для LTR)
+                if (curr.Fixation.Xpx < prev.Fixation.Xpx)
+                {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Вычисляет регрессии OUT (из каждого слова)
+    /// </summary>
+    private static void ComputeRegressionsOut(
+        List<FixationTextBinding> bindings,
+        WordReadingMetrics[] metrics)
+    {
+        for (int i = 1; i < bindings.Count; i++)
+        {
+            var prev = bindings[i - 1];
+            var curr = bindings[i];
+
+            if (prev.WordIndex.HasValue && curr.WordIndex.HasValue)
+            {
+                if (curr.WordIndex.Value < prev.WordIndex.Value)
+                {
+                    // Регрессия влево
+                    if (prev.WordIndex.Value < metrics.Length)
+                        metrics[prev.WordIndex.Value].NumberOfRegressionsOut++;
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -444,32 +643,6 @@ public static class ReadingMetricsCalculator
     }
 
     #region Private Methods
-
-    private static void ComputeRegressions(
-        List<FixationTextBinding> bindings,
-        WordReadingMetrics[] metrics)
-    {
-        var sorted = bindings
-            .Where(b => b.WordIndex.HasValue)
-            .OrderBy(b => b.SequenceIndex)
-            .ToList();
-
-        for (int i = 1; i < sorted.Count; i++)
-        {
-            int prevWord = sorted[i - 1].WordIndex!.Value;
-            int currWord = sorted[i].WordIndex!.Value;
-
-            if (currWord < prevWord)
-            {
-                // Регрессия: ушли влево
-                if (prevWord < metrics.Length)
-                    metrics[prevWord].NumberOfRegressionsOut++;
-
-                if (currWord < metrics.Length)
-                    metrics[currWord].NumberOfRegressionsIn++;
-            }
-        }
-    }
 
     private static double CalculateReadingOrderScore(
         List<FixationTextBinding> fixes,
