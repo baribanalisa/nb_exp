@@ -2635,9 +2635,9 @@ public partial class MainWindow : Window
         // Visibility не трогаем, чтобы не пересчитывать Layout (меньше шанс фриза/мигания)
         OverlayText.Text = "";
 
-        // ВАЖНО: Мы НЕ трогаем Topmost и НЕ вызываем Hide/Show.
-        // Окно остается висеть черным фоном. Калибровка трекера (PathFinder)
-        // должна сама открыться поверх нас.
+        // Сохраняем и убираем Topmost, чтобы окно калибровки трекера могло отобразиться поверх
+        var wasTopmost = Topmost;
+        Topmost = false;
 
         try
         {
@@ -2718,6 +2718,9 @@ public partial class MainWindow : Window
         }
         finally
         {
+            // Восстанавливаем Topmost
+            Topmost = wasTopmost;
+
             // Убеждаемся, что наше окно активно и в фокусе после возврата
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Maximized;
             Activate();
