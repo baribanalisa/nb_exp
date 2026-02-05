@@ -100,6 +100,36 @@
             </Setter>
         </Style>
 
+        <!-- ===== Стиль кнопки тулбара визуализаций ===== -->
+        <Style x:Key="ToolbarRadioButtonStyle" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#6B7280"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Width="{TemplateBinding Width}"
+                                Height="{TemplateBinding Height}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E5E7EB"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2563EB"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ===== Стиль списка как карточки экспериментов ===== -->
         <Style x:Key="StimulusListItemStyle" TargetType="ListBoxItem">
             <Setter Property="Padding" Value="0"/>
@@ -163,20 +193,520 @@
 
     <Grid Margin="18">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="400" MinWidth="250"/>
-            <ColumnDefinition Width="6"/>
             <ColumnDefinition Width="*" MinWidth="300"/>
-            <ColumnDefinition x:Name="KgrSpacerColumn" Width="6"/>
-            <ColumnDefinition x:Name="KgrColumn" Width="360" MinWidth="200"/>
+            <ColumnDefinition Width="6"/>
+            <ColumnDefinition Width="400" MinWidth="250"/>
         </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- LEFT PANEL: stimuli + results -->
-        <Grid Grid.Column="0" Grid.RowSpan="2">
+        <!-- ROW 0: Название эксперимента -->
+        <TextBlock x:Name="ExperimentNameText"
+                   Grid.Column="0" Grid.Row="0"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="#111827"
+                   Margin="0,0,0,12"
+                   Text="Эксперимент"/>
+
+        <!-- CENTER: preview -->
+        <Border Grid.Column="0" Grid.Row="1"
+                CornerRadius="14"
+                BorderThickness="0"
+                BorderBrush="Transparent"
+                Background="White"
+                Padding="14">
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- COLUMN 0: Вертикальная панель инструментов (как в Photoshop) -->
+                <Border Grid.Column="0"
+                        Background="#F3F4F6"
+                        CornerRadius="8"
+                        Padding="4"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Vertical">
+                        <!-- Кнопки настроек и экспорта -->
+                        <Button x:Name="AnalysisSettingsBtn"
+                                Width="40" Height="40"
+                                Margin="2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="AnalysisSettingsBtn_Click"
+                                Cursor="Hand"
+                                ToolTip="Настройки анализа">
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="#6B7280"/>
+                        </Button>
+                        <Button x:Name="ExportMenuBtn"
+                                Width="40" Height="40"
+                                Margin="2"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Click="ExportMenuBtn_Click"
+                                Cursor="Hand"
+                                ToolTip="Экспорт">
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="ExportContextMenu">
+                                    <MenuItem Header="Экспорт визуализации" Click="ExportVisualization_Click">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Экспорт областей интереса" Click="ExportAoiCsv_Click">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Экспорт статистики" Click="ExportStatistics_Click">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem x:Name="ExportKgrMenuItem" Header="Экспорт данных КГР" Click="ExportKgr_Click" Visibility="Collapsed">
+                                        <MenuItem.Icon>
+                                            <TextBlock Text="&#xE95A;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                        </MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                            <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="#6B7280"/>
+                        </Button>
+
+                        <Separator Margin="4,8" Background="#E5E7EB"/>
+
+                        <!-- Визуализации -->
+                        <RadioButton x:Name="ToolEyeMovement"
+                                     GroupName="VisualizationTools"
+                                     Width="40" Height="40"
+                                     Margin="2"
+                                     IsChecked="True"
+                                     Checked="VisualizationTool_Checked"
+                                     ToolTip="Карта движения взгляда"
+                                     Tag="0"
+                                     Style="{StaticResource ToolbarRadioButtonStyle}">
+                            <TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                        </RadioButton>
+                        <RadioButton x:Name="ToolHeatmap"
+                                     GroupName="VisualizationTools"
+                                     Width="40" Height="40"
+                                     Margin="2"
+                                     Checked="VisualizationTool_Checked"
+                                     ToolTip="Тепловая карта"
+                                     Tag="1"
+                                     Style="{StaticResource ToolbarRadioButtonStyle}">
+                            <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                        </RadioButton>
+                        <RadioButton x:Name="ToolBeeSwarm"
+                                     GroupName="VisualizationTools"
+                                     Width="40" Height="40"
+                                     Margin="2"
+                                     Checked="VisualizationTool_Checked"
+                                     ToolTip="Пчелиный рой"
+                                     Tag="2"
+                                     Style="{StaticResource ToolbarRadioButtonStyle}">
+                            <TextBlock Text="&#xECAD;" FontFamily="Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                        </RadioButton>
+                        <RadioButton x:Name="ToolAoi"
+                                     GroupName="VisualizationTools"
+                                     Width="40" Height="40"
+                                     Margin="2"
+                                     Checked="VisualizationTool_Checked"
+                                     ToolTip="Области интереса"
+                                     Tag="3"
+                                     Style="{StaticResource ToolbarRadioButtonStyle}">
+                            <TextBlock Text="&#xE7C5;" FontFamily="Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                        </RadioButton>
+
+                        <Separator Margin="4,8" Background="#E5E7EB"/>
+
+                        <!-- Инструменты AOI (видны только в режиме AOI) -->
+                        <StackPanel x:Name="AoiToolsPanel" Visibility="Collapsed">
+                            <RadioButton x:Name="AoiToolRect"
+                                         GroupName="AoiShapeTools"
+                                         Width="40" Height="40"
+                                         Margin="2"
+                                         IsChecked="True"
+                                         Checked="AoiShapeTool_Checked"
+                                         ToolTip="Прямоугольник"
+                                         Tag="Rectangle"
+                                         Style="{StaticResource ToolbarRadioButtonStyle}">
+                                <TextBlock Text="&#xE739;" FontFamily="Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                            </RadioButton>
+                            <RadioButton x:Name="AoiToolEllipse"
+                                         GroupName="AoiShapeTools"
+                                         Width="40" Height="40"
+                                         Margin="2"
+                                         Checked="AoiShapeTool_Checked"
+                                         ToolTip="Эллипс"
+                                         Tag="Ellipse"
+                                         Style="{StaticResource ToolbarRadioButtonStyle}">
+                                <TextBlock Text="&#xEA3A;" FontFamily="Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                            </RadioButton>
+                            <RadioButton x:Name="AoiToolPolygon"
+                                         GroupName="AoiShapeTools"
+                                         Width="40" Height="40"
+                                         Margin="2"
+                                         Checked="AoiShapeTool_Checked"
+                                         ToolTip="Полигон"
+                                         Tag="Polygon"
+                                         Style="{StaticResource ToolbarRadioButtonStyle}">
+                                <TextBlock Text="&#xE7C8;" FontFamily="Segoe MDL2 Assets" FontSize="18" HorizontalAlignment="Center"/>
+                            </RadioButton>
+
+                            <Separator Margin="4,8" Background="#E5E7EB"/>
+
+                            <!-- Цвет AOI -->
+                            <Button x:Name="AoiColorBtn"
+                                    Width="36" Height="36"
+                                    Margin="2"
+                                    BorderThickness="2" BorderBrush="#CCC"
+                                    Click="AoiColorBtn_Click"
+                                    Cursor="Hand"
+                                    ToolTip="Цвет области">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border CornerRadius="4" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="2"/>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- COLUMN 1: Основной контент -->
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- ROW 0: Таймлайн сверху -->
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                    <!-- Таймлайн -->
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- video timeline (для видео-стимула) -->
+                        <Grid x:Name="VideoTimelinePanel" Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Button x:Name="PlayPauseBtn"
+                                    Grid.Column="0"
+                                    Style="{StaticResource PillButtonStyle}"
+                                    Width="80"
+                                    Padding="14,0"
+                                    Click="PlayPauseBtn_Click"
+                                    IsEnabled="False">
+                                ▶ Play
+                            </Button>
+
+                            <Slider x:Name="TimeSlider"
+                                    Grid.Column="2"
+                                    Minimum="0"
+                                    Maximum="1"
+                                    Value="0"
+                                    IsEnabled="False"
+                                    PreviewMouseDown="TimeSlider_PreviewMouseDown"
+                                    PreviewMouseUp="TimeSlider_PreviewMouseUp"/>
+
+                            <TextBlock x:Name="TimeText"
+                                       Grid.Column="4"
+                                       VerticalAlignment="Center"
+                                       Foreground="#88000000"
+                                       FontSize="12"
+                                       Text="00:00 / 00:00"/>
+                        </Grid>
+
+                        <!-- time slice (для картинок/цвета) -->
+                        <Grid x:Name="SliceTimelinePanel"
+                              Grid.Row="1"
+                              Margin="0,10,0,0"
+                              Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="12"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="SlicePlayPauseBtn"
+                                        Style="{StaticResource PillButtonStyle}"
+                                        Width="40"
+                                        Padding="0"
+                                        Click="SlicePlayPauseBtn_Click"
+                                        IsEnabled="False">
+                                    <TextBlock x:Name="SlicePlayPauseIcon"
+                                               Text="▶"
+                                               FontSize="14"/>
+                                </Button>
+                                <Button x:Name="SliceStopBtn"
+                                        Style="{StaticResource PillButtonStyle}"
+                                        Width="40"
+                                        Padding="0"
+                                        Margin="6,0,0,0"
+                                        Click="SliceStopBtn_Click"
+                                        IsEnabled="False">
+                                    <TextBlock Text="■" FontSize="12"/>
+                                </Button>
+                            </StackPanel>
+
+                            <Grid Grid.Column="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="От"/>
+                                    <controls:TimeRangeSlider x:Name="SliceRange"
+                                                             Grid.Column="2"
+                                                             Minimum="0"
+                                                             Maximum="1"
+                                                             StartValue="0"
+                                                             EndValue="1"
+                                                             RangeChanged="SliceRange_RangeChanged"/>
+                                </Grid>
+
+                                <Grid Grid.Row="1" Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="Время"/>
+                                    <Slider x:Name="SliceTimeSlider"
+                                            Grid.Column="2"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            Value="0"
+                                            IsEnabled="False"
+                                            ValueChanged="SliceTimeSlider_ValueChanged"/>
+                                </Grid>
+                            </Grid>
+
+                            <TextBlock x:Name="SliceText"
+                                       Grid.Row="0"
+                                       Grid.Column="4"
+                                       VerticalAlignment="Center"
+                                       Foreground="#88000000"
+                                       FontSize="12"
+                                       Text="—"/>
+
+                            <TextBlock x:Name="SliceTimeText"
+                                       Grid.Row="1"
+                                       Grid.Column="4"
+                                       VerticalAlignment="Center"
+                                       Foreground="#88000000"
+                                       FontSize="12"
+                                       Text="—"/>
+                        </Grid>
+
+                        <!-- ROW 2: Графики КГР (горизонтально, только под таймлайном) -->
+                        <Border x:Name="KgrChartsPanel"
+                                Grid.Row="2"
+                                Background="#F9FAFB"
+                                CornerRadius="8"
+                                Padding="8"
+                                Margin="0,8,0,0"
+                                Visibility="Collapsed">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <controls:MetricChart x:Name="KgrSrChart" Grid.Column="0" Height="80"/>
+                                <controls:MetricChart x:Name="KgrScChart" Grid.Column="2" Height="80"/>
+                                <controls:MetricChart x:Name="KgrHrChart" Grid.Column="4" Height="80"/>
+                                <controls:MetricChart x:Name="KgrPpgChart" Grid.Column="6" Height="80"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    </Grid>
+
+                    <!-- ROW 1: Стимул + оверлеи -->
+                    <Viewbox x:Name="StimulusViewbox" Grid.Row="1" Stretch="Uniform" HorizontalAlignment="Center">
+                    <Canvas x:Name="ScreenCanvas"
+                            Background="Black"
+                            ClipToBounds="True">
+
+                        <!-- color stimulus -->
+                        <Border x:Name="ColorPreview"
+                                CornerRadius="12"
+                                Background="Transparent"
+                                Visibility="Collapsed"/>
+
+                        <!-- image stimulus -->
+                        <Image x:Name="PreviewImage"
+                            Visibility="Collapsed"
+                            Stretch="Fill"/>
+
+                        <!-- video stimulus -->
+                        <vlc:VideoView x:Name="PreviewVlc"
+                                    Visibility="Collapsed">
+                            <Grid>
+                                <local:FixationOverlay x:Name="VideoFixOverlay"
+                                                    Visibility="Collapsed"
+                                                    IsHitTestVisible="False"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Stretch"/>
+                                <local:HeatmapOverlay x:Name="VideoHeatmapOverlay"
+                                                      Visibility="Collapsed"
+                                                      IsHitTestVisible="False"
+                                                      HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Stretch"/>
+
+                                <!-- НОВЫЙ ОВЕРЛЕЙ ДЛЯ ВИДЕО -->
+                                <local:BeeSwarmOverlay x:Name="VideoBeeOverlay"
+                                                       Visibility="Collapsed"
+                                                       IsHitTestVisible="False"
+                                                       HorizontalAlignment="Stretch"
+                                                       VerticalAlignment="Stretch"/>
+                            </Grid>
+                        </vlc:VideoView>
+
+                        <!-- overlay фиксаций (для картинок/цвета) -->
+                        <local:FixationOverlay x:Name="FixOverlay"
+                                            Visibility="Collapsed"
+                                            IsHitTestVisible="False"/>
+
+                        <!-- heatmap overlay (для картинок/цвета) -->
+                        <local:HeatmapOverlay x:Name="HeatmapOverlay"
+                                              Visibility="Collapsed"
+                                              IsHitTestVisible="False"/>
+
+                        <!-- НОВЫЙ ОВЕРЛЕЙ ДЛЯ КАРТИНОК -->
+                        <local:BeeSwarmOverlay x:Name="BeeOverlay"
+                                               Visibility="Collapsed"
+                                               IsHitTestVisible="False"/>
+                        <!-- IsHitTestVisible="True" чтобы мы могли рисовать мышкой -->
+                        <!-- Background убран, рисуется программно -->
+                        <local:AoiOverlay x:Name="AoiOverlay"
+                                        Visibility="Collapsed"
+                                        IsHitTestVisible="True"
+                                        Width="{Binding ActualWidth, ElementName=ScreenCanvas}"
+                                        Height="{Binding ActualHeight, ElementName=ScreenCanvas}"
+                                        MouseLeftButtonDown="AoiOverlay_MouseDown"
+                                        MouseMove="AoiOverlay_MouseMove"
+                                        MouseLeftButtonUp="AoiOverlay_MouseUp"/>
+
+                        <TextBlock x:Name="EmptyHint" Text="Выбери стимул справа" Foreground="#88000000" FontSize="16" TextAlignment="Center"/>
+                    </Canvas>
+                    </Viewbox>
+
+                    <!-- ROW 2: НИЖНЯЯ ОБЛАСТЬ (ГРАФИК ИЛИ ТАБЛИЦА) -->
+                <Grid Grid.Row="2" Margin="0,12,0,0" Height="150"
+                      Width="{Binding ActualWidth, ElementName=StimulusViewbox}"
+                      HorizontalAlignment="Center">
+
+                    <!-- 1. График (виден в обычных режимах) -->
+                    <controls:MetricChart x:Name="MetricChart"/>
+
+                    <!-- 2. Таблица AOI (видна только в режиме AOI) -->
+                    <DataGrid x:Name="AoiResultsGrid"
+                            Visibility="Collapsed"
+                            AutoGenerateColumns="False"
+                            CanUserAddRows="False"
+                            HeadersVisibility="Column"
+                            GridLinesVisibility="Horizontal"
+                            Background="White"
+                            BorderThickness="1" BorderBrush="#E5E7EB"
+                            ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            PreviewKeyDown="AoiResultsGrid_PreviewKeyDown">
+                        <DataGrid.Columns>
+                            <!-- 1. Цвет -->
+                            <DataGridTemplateColumn Header="Цвет" Width="40">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Width="16" Height="16" CornerRadius="8" Background="{Binding ColorHex}" HorizontalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- 2. Название -->
+                            <DataGridTextColumn Header="Название" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
+
+                            <!-- 3. Основные метрики -->
+                            <DataGridTextColumn Header="Фиксаций (N)" Binding="{Binding FixationCount}" IsReadOnly="True" Width="90"/>
+                            <DataGridTextColumn Header="Общее время (с)" Binding="{Binding TotalDwellTime, StringFormat=F2}" IsReadOnly="True" Width="110"/>
+
+                            <!-- 4. Новые метрики по вашему списку -->
+                            <DataGridTextColumn Header="До первой (N)" Binding="{Binding FixationsBeforeFirst}" IsReadOnly="True" Width="90" ToolTipService.ToolTip="Количество фиксаций до первой фиксации в области интереса"/>
+                            <DataGridTextColumn Header="До первой фиксации (с)" Binding="{Binding TimeToFirstFixation, StringFormat=F2}" IsReadOnly="True" Width="130" ToolTipService.ToolTip="Время до первой фиксации"/>
+                            <DataGridTextColumn Header="Длит. первой (с)" Binding="{Binding FirstFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="110"/>
+
+                            <DataGridTextColumn Header="Возвраты (N)" Binding="{Binding RevisitCount}" IsReadOnly="True" Width="90"/>
+                            <DataGridTextColumn Header="Ср. длит. фикс. (с)" Binding="{Binding AvgFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="120"/>
+
+                            <DataGridTextColumn Header="Саккад (N)" Binding="{Binding SaccadeCount}" IsReadOnly="True" Width="80"/>
+                            <DataGridTextColumn Header="Ср. ампл. саккад (°)" Binding="{Binding AvgSaccadeAmplitudeDeg, StringFormat=F2}" IsReadOnly="True" Width="130"/>
+
+                            <DataGridTextColumn Header="Путь (°)" Binding="{Binding ScanpathLengthDeg, StringFormat=F2}" IsReadOnly="True" Width="80"/>
+                            <DataGridTextColumn Header="Площадь (%)" Binding="{Binding AreaRatio, StringFormat=F1}" IsReadOnly="True" Width="90"/>
+
+                            <!-- Кнопка удаления -->
+                            <DataGridTemplateColumn Width="40">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="✕" Click="DeleteAoiRow_Click"
+                                                Background="Transparent" BorderThickness="0" Foreground="Red" Cursor="Hand" ToolTip="Удалить область интереса"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+                </Grid> <!-- Close Column 1 Grid -->
+            </Grid> <!-- Close main outer Grid -->
+        </Border>
+
+        <!-- GridSplitter между центральной и правой панелями -->
+        <GridSplitter Grid.Column="1" Grid.Row="1" Grid.RowSpan="2"
+                      Width="6"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="Transparent"
+                      Cursor="SizeWE"/>
+
+        <!-- RIGHT PANEL: stimuli + results -->
+        <Grid Grid.Column="2" Grid.Row="0" Grid.RowSpan="3">
             <Grid.RowDefinitions>
                 <RowDefinition Height="2*" MinHeight="150"/>
                 <RowDefinition Height="6"/>
@@ -348,490 +878,6 @@
                 </DockPanel>
             </Border>
         </Grid>
-
-        <!-- GridSplitter между левой и центральной панелями -->
-        <GridSplitter Grid.Column="1" Grid.RowSpan="2"
-                      Width="6"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
-                      Background="Transparent"
-                      Cursor="SizeWE"/>
-
-        <!-- RIGHT: preview -->
-        <Border Grid.Column="2" Grid.Row="0"
-                CornerRadius="14"
-                BorderThickness="0"
-                BorderBrush="Transparent"
-                Background="White"
-                Padding="14">
-
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <!-- Grid для размещения вкладок и кнопки экспорта в одной строке -->
-                <Grid Grid.Row="0" Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <TabControl x:Name="VisualizationModeTabs"
-                                Grid.Column="0"
-                                Style="{StaticResource TopTabControlStyle}"
-                                SelectionChanged="VisualizationModeTabs_SelectionChanged">
-                        <TabItem Header="Движение взгляда" Style="{StaticResource TopTabItemStyle}"/>
-                        <TabItem Header="Тепловая карта" Style="{StaticResource TopTabItemStyle}"/>
-                        <TabItem Header="Пчелиный рой" Style="{StaticResource TopTabItemStyle}"/>
-                        <TabItem Header="Области интереса" Style="{StaticResource TopTabItemStyle}"/>
-                    </TabControl>
-
-                </Grid>
-
-                <!-- AnalysisWindow.xaml -->
-                <Border x:Name="AoiToolbar"
-                        Grid.Row="1"
-                        Background="#F3F4F6" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,10"
-                        Visibility="Collapsed"> 
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Форма:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="AoiShapeCombo" Width="120" Margin="0,0,16,0" SelectionChanged="AoiShapeCombo_SelectionChanged" Height="28">
-                            <ComboBoxItem Content="Прямоугольник" Tag="Rectangle" IsSelected="True"/>
-                            <ComboBoxItem Content="Эллипс" Tag="Ellipse"/>
-                            <ComboBoxItem Content="Полигон" Tag="Polygon"/>
-                        </ComboBox>
-
-                        <!-- ПАЛИТРА: Кнопка вместо ComboBox -->
-                        <TextBlock Text="Цвет:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <Button x:Name="AoiColorBtn" 
-                                Width="40" Height="28" 
-                                Margin="0,0,16,0" 
-                                BorderThickness="1" BorderBrush="#CCC"
-                                Click="AoiColorBtn_Click" Cursor="Hand">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border CornerRadius="4" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"/>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
-
-                        <TextBlock Text="Толщина:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="AoiThickCombo" Width="60" Margin="0,0,16,0" SelectionChanged="AoiStyle_Changed" Height="28">
-                            <ComboBoxItem Content="1 пкс" Tag="1.0"/>
-                            <ComboBoxItem Content="2 пкс" Tag="2.0" IsSelected="True"/>
-                            <ComboBoxItem Content="3 пкс" Tag="3.0"/>
-                            <ComboBoxItem Content="4 пкс" Tag="4.0"/>
-                            <ComboBoxItem Content="5 пкс" Tag="5.0"/>
-                        </ComboBox>
-                    </StackPanel>
-                </Border>
-                
-                <!-- стимул + оверлеи -->
-                <Viewbox Grid.Row="2" Stretch="Uniform">
-                    <Canvas x:Name="ScreenCanvas"
-                            Background="Black"
-                            ClipToBounds="True">
-
-                        <!-- color stimulus -->
-                        <Border x:Name="ColorPreview"
-                                CornerRadius="12"
-                                Background="Transparent"
-                                Visibility="Collapsed"/>
-
-                        <!-- image stimulus -->
-                        <Image x:Name="PreviewImage"
-                            Visibility="Collapsed"
-                            Stretch="Fill"/>
-
-                        <!-- video stimulus -->
-                        <vlc:VideoView x:Name="PreviewVlc"
-                                    Visibility="Collapsed">
-                            <Grid>
-                                <local:FixationOverlay x:Name="VideoFixOverlay"
-                                                    Visibility="Collapsed"
-                                                    IsHitTestVisible="False"
-                                                    HorizontalAlignment="Stretch"
-                                                    VerticalAlignment="Stretch"/>
-                                <local:HeatmapOverlay x:Name="VideoHeatmapOverlay"
-                                                      Visibility="Collapsed"
-                                                      IsHitTestVisible="False"
-                                                      HorizontalAlignment="Stretch"
-                                                      VerticalAlignment="Stretch"/>
-
-                                <!-- НОВЫЙ ОВЕРЛЕЙ ДЛЯ ВИДЕО -->
-                                <local:BeeSwarmOverlay x:Name="VideoBeeOverlay"
-                                                       Visibility="Collapsed"
-                                                       IsHitTestVisible="False"
-                                                       HorizontalAlignment="Stretch"
-                                                       VerticalAlignment="Stretch"/>
-                            </Grid>
-                        </vlc:VideoView>
-
-                        <!-- overlay фиксаций (для картинок/цвета) -->
-                        <local:FixationOverlay x:Name="FixOverlay"
-                                            Visibility="Collapsed"
-                                            IsHitTestVisible="False"/>
-
-                        <!-- heatmap overlay (для картинок/цвета) -->
-                        <local:HeatmapOverlay x:Name="HeatmapOverlay"
-                                              Visibility="Collapsed"
-                                              IsHitTestVisible="False"/>
-
-                        <!-- НОВЫЙ ОВЕРЛЕЙ ДЛЯ КАРТИНОК -->
-                        <local:BeeSwarmOverlay x:Name="BeeOverlay"
-                                               Visibility="Collapsed"
-                                               IsHitTestVisible="False"/>
-                        <!-- IsHitTestVisible="True" чтобы мы могли рисовать мышкой -->
-                        <!-- Background убран, рисуется программно -->
-                        <local:AoiOverlay x:Name="AoiOverlay"
-                                        Visibility="Collapsed"
-                                        IsHitTestVisible="True"
-                                        Width="{Binding ActualWidth, ElementName=ScreenCanvas}"
-                                        Height="{Binding ActualHeight, ElementName=ScreenCanvas}"
-                                        MouseLeftButtonDown="AoiOverlay_MouseDown"
-                                        MouseMove="AoiOverlay_MouseMove"
-                                        MouseLeftButtonUp="AoiOverlay_MouseUp"/>
-
-                        <TextBlock x:Name="EmptyHint" Text="Выбери стимул слева" Foreground="#88000000" FontSize="16" TextAlignment="Center"/>
-                    </Canvas>
-                </Viewbox>
-
-                <!-- НИЖНЯЯ ОБЛАСТЬ (ГРАФИК ИЛИ ТАБЛИЦА) -->
-                <Grid Grid.Row="3" Margin="0,12,0,0" Height="150">
-
-                    <!-- 1. График (виден в обычных режимах) -->
-                    <controls:MetricChart x:Name="MetricChart"/>
-
-                    <!-- 2. Таблица AOI (видна только в режиме AOI) -->
-                    <DataGrid x:Name="AoiResultsGrid" 
-                            Visibility="Collapsed"
-                            AutoGenerateColumns="False" 
-                            CanUserAddRows="False"
-                            HeadersVisibility="Column"
-                            GridLinesVisibility="Horizontal"
-                            Background="White"
-                            BorderThickness="1" BorderBrush="#E5E7EB"
-                            ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                            ScrollViewer.VerticalScrollBarVisibility="Auto"
-                            PreviewKeyDown="AoiResultsGrid_PreviewKeyDown">
-                        <DataGrid.Columns>
-                            <!-- 1. Цвет -->
-                            <DataGridTemplateColumn Header="Цвет" Width="40">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Border Width="16" Height="16" CornerRadius="8" Background="{Binding ColorHex}" HorizontalAlignment="Center"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-
-                            <!-- 2. Название -->
-                            <DataGridTextColumn Header="Название" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
-
-                            <!-- 3. Основные метрики -->
-                            <DataGridTextColumn Header="Фиксаций (N)" Binding="{Binding FixationCount}" IsReadOnly="True" Width="90"/>
-                            <DataGridTextColumn Header="Общее время (с)" Binding="{Binding TotalDwellTime, StringFormat=F2}" IsReadOnly="True" Width="110"/>
-                            
-                            <!-- 4. Новые метрики по вашему списку -->
-                            <DataGridTextColumn Header="До первой (N)" Binding="{Binding FixationsBeforeFirst}" IsReadOnly="True" Width="90" ToolTipService.ToolTip="Количество фиксаций до первой фиксации в области интереса"/>
-                            <DataGridTextColumn Header="До первой фиксации (с)" Binding="{Binding TimeToFirstFixation, StringFormat=F2}" IsReadOnly="True" Width="130" ToolTipService.ToolTip="Время до первой фиксации"/>
-                            <DataGridTextColumn Header="Длит. первой (с)" Binding="{Binding FirstFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="110"/>
-                            
-                            <DataGridTextColumn Header="Возвраты (N)" Binding="{Binding RevisitCount}" IsReadOnly="True" Width="90"/>
-                            <DataGridTextColumn Header="Ср. длит. фикс. (с)" Binding="{Binding AvgFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="120"/>
-                            
-                            <DataGridTextColumn Header="Саккад (N)" Binding="{Binding SaccadeCount}" IsReadOnly="True" Width="80"/>
-                            <DataGridTextColumn Header="Ср. ампл. саккад (°)" Binding="{Binding AvgSaccadeAmplitudeDeg, StringFormat=F2}" IsReadOnly="True" Width="130"/>
-
-                            <DataGridTextColumn Header="Путь (°)" Binding="{Binding ScanpathLengthDeg, StringFormat=F2}" IsReadOnly="True" Width="80"/>
-                            <DataGridTextColumn Header="Площадь (%)" Binding="{Binding AreaRatio, StringFormat=F1}" IsReadOnly="True" Width="90"/>
-
-                            <!-- Кнопка удаления -->
-                            <DataGridTemplateColumn Width="40">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Content="✕" Click="DeleteAoiRow_Click" 
-                                                Background="Transparent" BorderThickness="0" Foreground="Red" Cursor="Hand" ToolTip="Удалить область интереса"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </Grid>
-            </Grid>
-        </Border>
-
-        <!-- RIGHT BOTTOM: timeline -->
-        <Border Grid.Column="2" Grid.Row="1"
-                CornerRadius="14"
-                BorderThickness="0"
-                BorderBrush="Transparent"
-                Background="White"
-                Padding="12"
-                Margin="0,14,0,0">
-            <!-- Делаем место справа под кнопку настроек (как ты просила) -->
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="10"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="10"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- таймлайн (сужается, потому что справа отдельная колонка) -->
-                <Grid Grid.Column="0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- video timeline (только для видео-стимула) -->
-                    <Grid x:Name="VideoTimelinePanel" Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <Button x:Name="PlayPauseBtn"
-                                Grid.Column="0"
-                                Style="{StaticResource PillButtonStyle}"
-                                Width="110"
-                                Padding="14,0"
-                                Click="PlayPauseBtn_Click"
-                                IsEnabled="False">
-                            ▶ Play
-                        </Button>
-
-
-                        <Slider x:Name="TimeSlider"
-                                Grid.Column="2"
-                                Minimum="0"
-                                Maximum="1"
-                                Value="0"
-                                IsEnabled="False"
-                                PreviewMouseDown="TimeSlider_PreviewMouseDown"
-                                PreviewMouseUp="TimeSlider_PreviewMouseUp"/>
-
-                        <TextBlock x:Name="TimeText"
-                                   Grid.Column="4"
-                                   VerticalAlignment="Center"
-                                   Foreground="#88000000"
-                                   FontSize="12"
-                                   Text="00:00 / 00:00"/>
-                    </Grid>
-
-                    <!-- time slice (для картинок/цвета) -->
-                    <Grid x:Name="SliceTimelinePanel"
-                          Grid.Row="1"
-                          Margin="0,10,0,0"
-                          Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button x:Name="SlicePlayPauseBtn"
-                                    Style="{StaticResource PillButtonStyle}"
-                                    Width="40"
-                                    Padding="0"
-                                    Click="SlicePlayPauseBtn_Click"
-                                    IsEnabled="False">
-                                <TextBlock x:Name="SlicePlayPauseIcon"
-                                           Text="▶"
-                                           FontSize="14"/>
-                            </Button>
-                            <Button x:Name="SliceStopBtn"
-                                    Style="{StaticResource PillButtonStyle}"
-                                    Width="40"
-                                    Padding="0"
-                                    Margin="6,0,0,0"
-                                    Click="SliceStopBtn_Click"
-                                    IsEnabled="False">
-                                <TextBlock Text="■" FontSize="12"/>
-                            </Button>
-                        </StackPanel>
-
-                        <Grid Grid.Column="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <Grid Grid.Row="0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="10"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="От"/>
-                                <controls:TimeRangeSlider x:Name="SliceRange"
-                                                         Grid.Column="2"
-                                                         Minimum="0"
-                                                         Maximum="1"
-                                                         StartValue="0"
-                                                         EndValue="1"
-                                                         RangeChanged="SliceRange_RangeChanged"/>
-                            </Grid>
-
-                            <Grid Grid.Row="1" Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="10"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="Время"/>
-                                <Slider x:Name="SliceTimeSlider"
-                                        Grid.Column="2"
-                                        Minimum="0"
-                                        Maximum="1"
-                                        Value="0"
-                                        IsEnabled="False"
-                                        ValueChanged="SliceTimeSlider_ValueChanged"/>
-                            </Grid>
-                        </Grid>
-
-                        <TextBlock x:Name="SliceText"
-                                   Grid.Row="0"
-                                   Grid.Column="4"
-                                   VerticalAlignment="Center"
-                                   Foreground="#88000000"
-                                   FontSize="12"
-                                   Text="—"/>
-
-                        <TextBlock x:Name="SliceTimeText"
-                                   Grid.Row="1"
-                                   Grid.Column="4"
-                                   VerticalAlignment="Center"
-                                   Foreground="#88000000"
-                                   FontSize="12"
-                                   Text="—"/>
-                    </Grid>
-
-                </Grid>
-
-                <!-- кнопка настроек анализа -->
-                <Button x:Name="AnalysisSettingsBtn"
-                        Grid.Column="2"
-                        Style="{StaticResource PillButtonStyle}"
-                        Width="160"
-                        Padding="14,0"
-                        Click="AnalysisSettingsBtn_Click"
-                        VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0"/>
-                        <TextBlock Text="Настройки"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- ПРАВЫЕ КНОПКИ -->
-                <Grid Grid.Column="4" VerticalAlignment="Center">
-                    <!-- кнопка экспорта с выпадающим меню -->
-                    <Button x:Name="ExportMenuBtn"
-                            Style="{StaticResource PillButtonStyle}"
-                            Width="120"
-                            Padding="14,0"
-                            Click="ExportMenuBtn_Click">
-                        <Button.ContextMenu>
-                            <ContextMenu x:Name="ExportContextMenu">
-                                <MenuItem Header="Экспорт визуализации" Click="ExportVisualization_Click">
-                                    <MenuItem.Icon>
-                                        <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="Экспорт областей интереса" Click="ExportAoiCsv_Click">
-                                    <MenuItem.Icon>
-                                        <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="Экспорт статистики" Click="ExportStatistics_Click">
-                                    <MenuItem.Icon>
-                                        <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem x:Name="ExportKgrMenuItem" Header="Экспорт данных КГР" Click="ExportKgr_Click" Visibility="Collapsed">
-                                    <MenuItem.Icon>
-                                        <TextBlock Text="&#xE95A;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" Margin="0,0,8,0"/>
-                            <TextBlock Text="Экспорт"/>
-                        </StackPanel>
-                    </Button>
-                </Grid>
-                
-            </Grid> <!-- Закрываем внутренний Grid -->
-        </Border> <!-- Закрываем Border -->
-
-        <!-- GridSplitter между центральной и правой (КГР) панелями -->
-        <GridSplitter x:Name="KgrSplitter"
-                      Grid.Column="3" Grid.RowSpan="2"
-                      Width="6"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
-                      Background="Transparent"
-                      Cursor="SizeWE"/>
-
-        <!-- RIGHT: KGR charts -->
-        <Border x:Name="KgrChartsPanel"
-                Grid.Column="4"
-                Grid.RowSpan="2"
-                CornerRadius="14"
-                BorderThickness="0"
-                BorderBrush="Transparent"
-                Background="White"
-                Padding="14"
-                Visibility="Collapsed">
-            <!-- ВАЖНО: StackPanel не "растягивает" контент по высоте,
-                 из-за этого Grid со '*' строками может получить почти нулевую высоту.
-                 Делаем Grid с Auto+* чтобы графики гарантированно получили место. -->
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0"
-                           Text="Сигналы КГР по стимулу"
-                           FontSize="16"
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,10"/>
-
-                <Grid Grid.Row="1">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <controls:MetricChart x:Name="KgrSrChart" Grid.Row="0" Margin="0,0,0,10"/>
-                    <controls:MetricChart x:Name="KgrScChart" Grid.Row="1" Margin="0,0,0,10"/>
-                    <controls:MetricChart x:Name="KgrHrChart" Grid.Row="2" Margin="0,0,0,10"/>
-                    <controls:MetricChart x:Name="KgrPpgChart" Grid.Row="3"/>
-                </Grid>
-
-            </Grid>
-        </Border>
-
 
     </Grid>
 </Window>

@@ -165,18 +165,12 @@ public partial class AnalysisWindow : Window
         if (_hasKgr)
         {
             KgrChartsPanel.Visibility = Visibility.Visible;
-            KgrSplitter.Visibility = Visibility.Visible;
-            KgrSpacerColumn.Width = new GridLength(6);
-            KgrColumn.Width = new GridLength(360);
             if (ExportKgrMenuItem != null)
                 ExportKgrMenuItem.Visibility = Visibility.Visible;
         }
         else
         {
             KgrChartsPanel.Visibility = Visibility.Collapsed;
-            KgrSplitter.Visibility = Visibility.Collapsed;
-            KgrSpacerColumn.Width = new GridLength(0);
-            KgrColumn.Width = new GridLength(0);
             if (ExportKgrMenuItem != null)
                 ExportKgrMenuItem.Visibility = Visibility.Collapsed;
         }
@@ -447,6 +441,12 @@ public partial class AnalysisWindow : Window
 
         _exp = exp;
         _visualSettings = AppConfigManager.LoadAnalysisVisualizationSettings();
+
+        // Устанавливаем название эксперимента
+        var expName = _exp?.Name;
+        if (string.IsNullOrWhiteSpace(expName))
+            expName = "Эксперимент";
+        ExperimentNameText.Text = expName;
 
         Title = _initialSelectedCount == 1 && !string.IsNullOrWhiteSpace(_primaryResultUid)
             ? $"Анализ — {_primaryResultUid}"
@@ -2515,7 +2515,7 @@ public partial class AnalysisWindow : Window
         try
         {
             _currentVizSettings.Normalize();
-            VisualizationModeTabs.SelectedIndex = (int)_currentVizSettings.Mode;
+            SetVisualizationModeIndex((int)_currentVizSettings.Mode);
         }
         finally
         {
@@ -2782,18 +2782,54 @@ public partial class AnalysisWindow : Window
         }
     }
 
-    private void VisualizationModeTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// Gets current visualization mode index from RadioButton toolbar
+    /// </summary>
+    private int GetVisualizationModeIndex()
+    {
+        if (ToolEyeMovement?.IsChecked == true) return 0;
+        if (ToolHeatmap?.IsChecked == true) return 1;
+        if (ToolBeeSwarm?.IsChecked == true) return 2;
+        if (ToolAoi?.IsChecked == true) return 3;
+        return 0;
+    }
+
+    /// <summary>
+    /// Sets visualization mode by index using RadioButton toolbar
+    /// </summary>
+    private void SetVisualizationModeIndex(int index)
+    {
+        switch (index)
+        {
+            case 0: if (ToolEyeMovement != null) ToolEyeMovement.IsChecked = true; break;
+            case 1: if (ToolHeatmap != null) ToolHeatmap.IsChecked = true; break;
+            case 2: if (ToolBeeSwarm != null) ToolBeeSwarm.IsChecked = true; break;
+            case 3: if (ToolAoi != null) ToolAoi.IsChecked = true; break;
+        }
+    }
+
+    private void VisualizationTool_Checked(object sender, RoutedEventArgs e)
     {
         if (_suppressVizUi) return;
         if (_currentStimUid == null) return;
 
-        if (VisualizationModeTabs.SelectedIndex < 0) return;
-        _currentVizSettings.Mode = (StimulusVisualizationMode)VisualizationModeTabs.SelectedIndex;
+        var index = GetVisualizationModeIndex();
+        if (index < 0) return;
+        _currentVizSettings.Mode = (StimulusVisualizationMode)index;
         _currentVizSettings.Normalize();
         SaveCurrentVisualizationSettings();
         UpdateVisualizationModeUi();
         UpdateVisualizationForCurrentStimulus();
-        UpdateAoiMode(VisualizationModeTabs.SelectedIndex);
+        UpdateAoiMode(index);
+    }
+
+    private void AoiShapeTool_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string typeStr)
+        {
+            if (Enum.TryParse<AoiType>(typeStr, out var t))
+                _currentAoiType = t;
+        }
     }
 
     private StimulusVizSettings LoadStimulusVisualizationSettings(string stimUid)
@@ -2908,8 +2944,8 @@ public partial class AnalysisWindow : Window
         if (MetricChart != null) MetricChart.Visibility = showMetricChart ? Visibility.Visible : Visibility.Collapsed;
         if (AoiResultsGrid != null) AoiResultsGrid.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
 
-        // 4. Панель инструментов AOI
-        if (AoiToolbar != null) AoiToolbar.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
+        // 4. Панель инструментов AOI (в вертикальном тулбаре)
+        if (AoiToolsPanel != null) AoiToolsPanel.Visibility = isAoi ? Visibility.Visible : Visibility.Collapsed;
 
         // 5. Управление кнопками Плей/Пауза (скрываем в AOI)
         Visibility controlsVisibility = isAoi ? Visibility.Collapsed : Visibility.Visible;
@@ -2979,19 +3015,8 @@ public partial class AnalysisWindow : Window
 
     private double GetSelectedAoiThick()
     {
-        if (AoiThickCombo.SelectedItem is ComboBoxItem item && item.Tag is string s && double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v))
-            return v;
+        // Default thickness for AOI borders
         return 2.0;
-    }
-
-    // Обработчики изменений в ComboBox
-    private void AoiShapeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (AoiShapeCombo.SelectedItem is ComboBoxItem item && item.Tag is string typeStr)
-        {
-            if (Enum.TryParse<AoiType>(typeStr, out var t))
-                _currentAoiType = t;
-        }
     }
 
     private void AoiStyle_Changed(object sender, SelectionChangedEventArgs e)
@@ -3560,7 +3585,7 @@ public partial class AnalysisWindow : Window
                 return;
             }
 
-            var tabIndex = VisualizationModeTabs?.SelectedIndex ?? 0;
+            var tabIndex = GetVisualizationModeIndex();
             string modeName = tabIndex switch
             {
                 0 => "gaze",
