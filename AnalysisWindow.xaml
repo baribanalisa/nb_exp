@@ -539,7 +539,9 @@
                                 CornerRadius="8"
                                 Padding="8"
                                 Margin="0,8,0,0"
-                                Visibility="Collapsed">
+                                Visibility="Collapsed"
+                                Width="{Binding ActualWidth, ElementName=StimulusViewbox}"
+                                HorizontalAlignment="Center">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
