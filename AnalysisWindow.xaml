@@ -192,29 +192,39 @@
     </Window.Resources>
 
     <Grid Margin="18">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" MinWidth="300"/>
-            <ColumnDefinition Width="6"/>
-            <ColumnDefinition Width="400" MinWidth="250"/>
-        </Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions>
+        <!-- Левый блок: стимул + низ (stimuli/results) -->
+        <ColumnDefinition Width="*" MinWidth="700"/>
+        <ColumnDefinition Width="6"/>
+        <!-- Правая панель: таймлайн + графики -->
+        <ColumnDefinition Width="420" MinWidth="320"/>
+    </Grid.ColumnDefinitions>
 
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <!-- ROW 0: Название эксперимента -->
+    <TextBlock x:Name="ExperimentNameText"
+               Grid.Column="0" Grid.Row="0"
+               Grid.ColumnSpan="3"
+               FontSize="18"
+               FontWeight="SemiBold"
+               Foreground="#111827"
+               Margin="0,0,0,12"
+               Text="Эксперимент"/>
+
+    <!-- LEFT AREA (Column 0): Stimulus сверху + нижняя панель Stimuli/Results -->
+    <Grid Grid.Column="0" Grid.Row="1">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="6"/>
+            <RowDefinition Height="320" MinHeight="220"/>
         </Grid.RowDefinitions>
 
-        <!-- ROW 0: Название эксперимента -->
-        <TextBlock x:Name="ExperimentNameText"
-                   Grid.Column="0" Grid.Row="0"
-                   FontSize="18"
-                   FontWeight="SemiBold"
-                   Foreground="#111827"
-                   Margin="0,0,0,12"
-                   Text="Эксперимент"/>
-
-        <!-- CENTER: preview -->
-        <Border Grid.Column="0" Grid.Row="1"
+        <!-- TOP: Stimulus view -->
+        <Border Grid.Row="0"
                 CornerRadius="14"
                 BorderThickness="0"
                 BorderBrush="Transparent"
@@ -227,13 +237,13 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- COLUMN 0: Вертикальная панель инструментов (как в Photoshop) -->
+                <!-- TOOLBAR (слева, как в фотошопе) -->
                 <Border Grid.Column="0"
                         Background="#F3F4F6"
                         CornerRadius="8"
                         Padding="4"
                         Margin="0,0,12,0"
-                        VerticalAlignment="Center">
+                        VerticalAlignment="Top">
                     <StackPanel Orientation="Vertical">
                         <!-- Кнопки настроек и экспорта -->
                         <Button x:Name="AnalysisSettingsBtn"
@@ -246,6 +256,7 @@
                                 ToolTip="Настройки анализа">
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="#6B7280"/>
                         </Button>
+
                         <Button x:Name="ExportMenuBtn"
                                 Width="40" Height="40"
                                 Margin="2"
@@ -382,341 +393,118 @@
                     </StackPanel>
                 </Border>
 
-                <!-- COLUMN 1: Основной контент -->
+                <!-- CONTENT (стимул) -->
                 <Grid Grid.Column="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- ROW 0: Таймлайн сверху -->
-                    <Grid Grid.Row="0" Margin="0,0,0,12">
-                    <!-- Таймлайн -->
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                    <!-- Заголовок как на макете -->
+                    <Border Grid.Row="0"
+                            Background="Transparent"
+                            BorderBrush="#E5E7EB"
+                            BorderThickness="0,0,0,1"
+                            Padding="8,2"
+                            Margin="0,0,0,10">
+                        
+                    </Border>
 
-                        <!-- video timeline (для видео-стимула) -->
-                        <Grid x:Name="VideoTimelinePanel" Grid.Row="0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <Button x:Name="PlayPauseBtn"
-                                    Grid.Column="0"
-                                    Style="{StaticResource PillButtonStyle}"
-                                    Width="80"
-                                    Padding="14,0"
-                                    Click="PlayPauseBtn_Click"
-                                    IsEnabled="False">
-                                ▶ Play
-                            </Button>
-
-                            <Slider x:Name="TimeSlider"
-                                    Grid.Column="2"
-                                    Minimum="0"
-                                    Maximum="1"
-                                    Value="0"
-                                    IsEnabled="False"
-                                    PreviewMouseDown="TimeSlider_PreviewMouseDown"
-                                    PreviewMouseUp="TimeSlider_PreviewMouseUp"/>
-
-                            <TextBlock x:Name="TimeText"
-                                       Grid.Column="4"
-                                       VerticalAlignment="Center"
-                                       Foreground="#88000000"
-                                       FontSize="12"
-                                       Text="00:00 / 00:00"/>
-                        </Grid>
-
-                        <!-- time slice (для картинок/цвета) -->
-                        <Grid x:Name="SliceTimelinePanel"
-                              Grid.Row="1"
-                              Margin="0,10,0,0"
-                              Visibility="Collapsed">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button x:Name="SlicePlayPauseBtn"
-                                        Style="{StaticResource PillButtonStyle}"
-                                        Width="40"
-                                        Padding="0"
-                                        Click="SlicePlayPauseBtn_Click"
-                                        IsEnabled="False">
-                                    <TextBlock x:Name="SlicePlayPauseIcon"
-                                               Text="▶"
-                                               FontSize="14"/>
-                                </Button>
-                                <Button x:Name="SliceStopBtn"
-                                        Style="{StaticResource PillButtonStyle}"
-                                        Width="40"
-                                        Padding="0"
-                                        Margin="6,0,0,0"
-                                        Click="SliceStopBtn_Click"
-                                        IsEnabled="False">
-                                    <TextBlock Text="■" FontSize="12"/>
-                                </Button>
-                            </StackPanel>
-
-                            <Grid Grid.Column="2">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <Grid Grid.Row="0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="10"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="От"/>
-                                    <controls:TimeRangeSlider x:Name="SliceRange"
-                                                             Grid.Column="2"
-                                                             Minimum="0"
-                                                             Maximum="1"
-                                                             StartValue="0"
-                                                             EndValue="1"
-                                                             RangeChanged="SliceRange_RangeChanged"/>
-                                </Grid>
-
-                                <Grid Grid.Row="1" Margin="0,8,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="10"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="Время"/>
-                                    <Slider x:Name="SliceTimeSlider"
-                                            Grid.Column="2"
-                                            Minimum="0"
-                                            Maximum="1"
-                                            Value="0"
-                                            IsEnabled="False"
-                                            ValueChanged="SliceTimeSlider_ValueChanged"/>
-                                </Grid>
-                            </Grid>
-
-                            <TextBlock x:Name="SliceText"
-                                       Grid.Row="0"
-                                       Grid.Column="4"
-                                       VerticalAlignment="Center"
-                                       Foreground="#88000000"
-                                       FontSize="12"
-                                       Text="—"/>
-
-                            <TextBlock x:Name="SliceTimeText"
-                                       Grid.Row="1"
-                                       Grid.Column="4"
-                                       VerticalAlignment="Center"
-                                       Foreground="#88000000"
-                                       FontSize="12"
-                                       Text="—"/>
-                        </Grid>
-
-                        <!-- ROW 2: Графики КГР (горизонтально, только под таймлайном) -->
-                        <Border x:Name="KgrChartsPanel"
-                                Grid.Row="2"
-                                Background="#F9FAFB"
-                                CornerRadius="8"
-                                Padding="8"
-                                Margin="0,8,0,0"
-                                Visibility="Collapsed"
-                                Width="{Binding ActualWidth, ElementName=StimulusViewbox}"
-                                HorizontalAlignment="Center">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="8"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="8"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="8"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <controls:MetricChart x:Name="KgrSrChart" Grid.Column="0" Height="80"/>
-                                <controls:MetricChart x:Name="KgrScChart" Grid.Column="2" Height="80"/>
-                                <controls:MetricChart x:Name="KgrHrChart" Grid.Column="4" Height="80"/>
-                                <controls:MetricChart x:Name="KgrPpgChart" Grid.Column="6" Height="80"/>
-                            </Grid>
-                        </Border>
-                    </Grid>
-                    </Grid>
-
-                    <!-- ROW 1: Стимул + оверлеи -->
+                    <!-- Стимул + оверлеи -->
                     <Viewbox x:Name="StimulusViewbox" Grid.Row="1" Stretch="Uniform" HorizontalAlignment="Center">
-                    <Canvas x:Name="ScreenCanvas"
-                            Background="Black"
-                            ClipToBounds="True">
+                        <Canvas x:Name="ScreenCanvas"
+                                Background="Black"
+                                ClipToBounds="True">
 
-                        <!-- color stimulus -->
-                        <Border x:Name="ColorPreview"
-                                CornerRadius="12"
-                                Background="Transparent"
-                                Visibility="Collapsed"/>
+                            <!-- color stimulus -->
+                            <Border x:Name="ColorPreview"
+                                    CornerRadius="12"
+                                    Background="Transparent"
+                                    Visibility="Collapsed"/>
 
-                        <!-- image stimulus -->
-                        <Image x:Name="PreviewImage"
-                            Visibility="Collapsed"
-                            Stretch="Fill"/>
+                            <!-- image stimulus -->
+                            <Image x:Name="PreviewImage"
+                                   Visibility="Collapsed"
+                                   Stretch="Fill"/>
 
-                        <!-- video stimulus -->
-                        <vlc:VideoView x:Name="PreviewVlc"
-                                    Visibility="Collapsed">
-                            <Grid>
-                                <local:FixationOverlay x:Name="VideoFixOverlay"
-                                                    Visibility="Collapsed"
-                                                    IsHitTestVisible="False"
-                                                    HorizontalAlignment="Stretch"
-                                                    VerticalAlignment="Stretch"/>
-                                <local:HeatmapOverlay x:Name="VideoHeatmapOverlay"
-                                                      Visibility="Collapsed"
-                                                      IsHitTestVisible="False"
-                                                      HorizontalAlignment="Stretch"
-                                                      VerticalAlignment="Stretch"/>
+                            <!-- video stimulus -->
+                            <vlc:VideoView x:Name="PreviewVlc"
+                                           Visibility="Collapsed">
+                                <Grid>
+                                    <local:FixationOverlay x:Name="VideoFixOverlay"
+                                                          Visibility="Collapsed"
+                                                          IsHitTestVisible="False"
+                                                          HorizontalAlignment="Stretch"
+                                                          VerticalAlignment="Stretch"/>
+                                    <local:HeatmapOverlay x:Name="VideoHeatmapOverlay"
+                                                         Visibility="Collapsed"
+                                                         IsHitTestVisible="False"
+                                                         HorizontalAlignment="Stretch"
+                                                         VerticalAlignment="Stretch"/>
 
-                                <!-- НОВЫЙ ОВЕРЛЕЙ ДЛЯ ВИДЕО -->
-                                <local:BeeSwarmOverlay x:Name="VideoBeeOverlay"
-                                                       Visibility="Collapsed"
-                                                       IsHitTestVisible="False"
-                                                       HorizontalAlignment="Stretch"
-                                                       VerticalAlignment="Stretch"/>
-                            </Grid>
-                        </vlc:VideoView>
+                                    <local:BeeSwarmOverlay x:Name="VideoBeeOverlay"
+                                                          Visibility="Collapsed"
+                                                          IsHitTestVisible="False"
+                                                          HorizontalAlignment="Stretch"
+                                                          VerticalAlignment="Stretch"/>
+                                </Grid>
+                            </vlc:VideoView>
 
-                        <!-- overlay фиксаций (для картинок/цвета) -->
-                        <local:FixationOverlay x:Name="FixOverlay"
-                                            Visibility="Collapsed"
-                                            IsHitTestVisible="False"/>
+                            <!-- overlay фиксаций (для картинок/цвета) -->
+                            <local:FixationOverlay x:Name="FixOverlay"
+                                                   Visibility="Collapsed"
+                                                   IsHitTestVisible="False"/>
 
-                        <!-- heatmap overlay (для картинок/цвета) -->
-                        <local:HeatmapOverlay x:Name="HeatmapOverlay"
+                            <!-- heatmap overlay (для картинок/цвета) -->
+                            <local:HeatmapOverlay x:Name="HeatmapOverlay"
+                                                  Visibility="Collapsed"
+                                                  IsHitTestVisible="False"/>
+
+                            <!-- beeswarm overlay (для картинок) -->
+                            <local:BeeSwarmOverlay x:Name="BeeOverlay"
+                                                   Visibility="Collapsed"
+                                                   IsHitTestVisible="False"/>
+
+                            <!-- AOI overlay -->
+                            <local:AoiOverlay x:Name="AoiOverlay"
                                               Visibility="Collapsed"
-                                              IsHitTestVisible="False"/>
+                                              IsHitTestVisible="True"
+                                              Width="{Binding ActualWidth, ElementName=ScreenCanvas}"
+                                              Height="{Binding ActualHeight, ElementName=ScreenCanvas}"
+                                              MouseLeftButtonDown="AoiOverlay_MouseDown"
+                                              MouseMove="AoiOverlay_MouseMove"
+                                              MouseLeftButtonUp="AoiOverlay_MouseUp"/>
 
-                        <!-- НОВЫЙ ОВЕРЛЕЙ ДЛЯ КАРТИНОК -->
-                        <local:BeeSwarmOverlay x:Name="BeeOverlay"
-                                               Visibility="Collapsed"
-                                               IsHitTestVisible="False"/>
-                        <!-- IsHitTestVisible="True" чтобы мы могли рисовать мышкой -->
-                        <!-- Background убран, рисуется программно -->
-                        <local:AoiOverlay x:Name="AoiOverlay"
-                                        Visibility="Collapsed"
-                                        IsHitTestVisible="True"
-                                        Width="{Binding ActualWidth, ElementName=ScreenCanvas}"
-                                        Height="{Binding ActualHeight, ElementName=ScreenCanvas}"
-                                        MouseLeftButtonDown="AoiOverlay_MouseDown"
-                                        MouseMove="AoiOverlay_MouseMove"
-                                        MouseLeftButtonUp="AoiOverlay_MouseUp"/>
-
-                        <TextBlock x:Name="EmptyHint" Text="Выбери стимул справа" Foreground="#88000000" FontSize="16" TextAlignment="Center"/>
-                    </Canvas>
+                            <TextBlock x:Name="EmptyHint"
+                                       Text="Выбери стимул"
+                                       Foreground="#88000000"
+                                       FontSize="16"
+                                       TextAlignment="Center"/>
+                        </Canvas>
                     </Viewbox>
-
-                    <!-- ROW 2: НИЖНЯЯ ОБЛАСТЬ (ГРАФИК ИЛИ ТАБЛИЦА) -->
-                <Grid Grid.Row="2" Margin="0,12,0,0" Height="150"
-                      Width="{Binding ActualWidth, ElementName=StimulusViewbox}"
-                      HorizontalAlignment="Center">
-
-                    <!-- 1. График (виден в обычных режимах) -->
-                    <controls:MetricChart x:Name="MetricChart"/>
-
-                    <!-- 2. Таблица AOI (видна только в режиме AOI) -->
-                    <DataGrid x:Name="AoiResultsGrid"
-                            Visibility="Collapsed"
-                            AutoGenerateColumns="False"
-                            CanUserAddRows="False"
-                            HeadersVisibility="Column"
-                            GridLinesVisibility="Horizontal"
-                            Background="White"
-                            BorderThickness="1" BorderBrush="#E5E7EB"
-                            ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                            ScrollViewer.VerticalScrollBarVisibility="Auto"
-                            PreviewKeyDown="AoiResultsGrid_PreviewKeyDown">
-                        <DataGrid.Columns>
-                            <!-- 1. Цвет -->
-                            <DataGridTemplateColumn Header="Цвет" Width="40">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Border Width="16" Height="16" CornerRadius="8" Background="{Binding ColorHex}" HorizontalAlignment="Center"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-
-                            <!-- 2. Название -->
-                            <DataGridTextColumn Header="Название" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
-
-                            <!-- 3. Основные метрики -->
-                            <DataGridTextColumn Header="Фиксаций (N)" Binding="{Binding FixationCount}" IsReadOnly="True" Width="90"/>
-                            <DataGridTextColumn Header="Общее время (с)" Binding="{Binding TotalDwellTime, StringFormat=F2}" IsReadOnly="True" Width="110"/>
-
-                            <!-- 4. Новые метрики по вашему списку -->
-                            <DataGridTextColumn Header="До первой (N)" Binding="{Binding FixationsBeforeFirst}" IsReadOnly="True" Width="90" ToolTipService.ToolTip="Количество фиксаций до первой фиксации в области интереса"/>
-                            <DataGridTextColumn Header="До первой фиксации (с)" Binding="{Binding TimeToFirstFixation, StringFormat=F2}" IsReadOnly="True" Width="130" ToolTipService.ToolTip="Время до первой фиксации"/>
-                            <DataGridTextColumn Header="Длит. первой (с)" Binding="{Binding FirstFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="110"/>
-
-                            <DataGridTextColumn Header="Возвраты (N)" Binding="{Binding RevisitCount}" IsReadOnly="True" Width="90"/>
-                            <DataGridTextColumn Header="Ср. длит. фикс. (с)" Binding="{Binding AvgFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="120"/>
-
-                            <DataGridTextColumn Header="Саккад (N)" Binding="{Binding SaccadeCount}" IsReadOnly="True" Width="80"/>
-                            <DataGridTextColumn Header="Ср. ампл. саккад (°)" Binding="{Binding AvgSaccadeAmplitudeDeg, StringFormat=F2}" IsReadOnly="True" Width="130"/>
-
-                            <DataGridTextColumn Header="Путь (°)" Binding="{Binding ScanpathLengthDeg, StringFormat=F2}" IsReadOnly="True" Width="80"/>
-                            <DataGridTextColumn Header="Площадь (%)" Binding="{Binding AreaRatio, StringFormat=F1}" IsReadOnly="True" Width="90"/>
-
-                            <!-- Кнопка удаления -->
-                            <DataGridTemplateColumn Width="40">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Content="✕" Click="DeleteAoiRow_Click"
-                                                Background="Transparent" BorderThickness="0" Foreground="Red" Cursor="Hand" ToolTip="Удалить область интереса"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
                 </Grid>
-                </Grid> <!-- Close Column 1 Grid -->
-            </Grid> <!-- Close main outer Grid -->
+            </Grid>
         </Border>
 
-        <!-- GridSplitter между центральной и правой панелями -->
-        <GridSplitter Grid.Column="1" Grid.Row="1" Grid.RowSpan="2"
-                      Width="6"
+        <!-- Splitter: регулируем высоту нижнего блока (только слева) -->
+        <GridSplitter Grid.Row="1"
+                      Height="6"
                       HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
+                      VerticalAlignment="Center"
                       Background="Transparent"
-                      Cursor="SizeWE"/>
+                      Cursor="SizeNS"
+                      ResizeBehavior="PreviousAndNext"/>
 
-        <!-- RIGHT PANEL: stimuli + results -->
-        <Grid Grid.Column="2" Grid.Row="0" Grid.RowSpan="3">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="2*" MinHeight="150"/>
-                <RowDefinition Height="6"/>
-                <RowDefinition Height="*" MinHeight="120"/>
-            </Grid.RowDefinitions>
+        <!-- BOTTOM (только под стимулом, не под графиками справа) -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="380"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="3*" MinWidth="520"/>
+            </Grid.ColumnDefinitions>
 
-            <!-- Stimuli list -->
-            <Border Grid.Row="0"
+            <!-- Stimuli -->
+            <Border Grid.Column="0"
                     CornerRadius="14"
                     BorderThickness="0"
                     BorderBrush="Transparent"
@@ -724,7 +512,11 @@
                     Padding="14">
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                        <TextBlock Text="Стимулы" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock Text="STIMULI"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextBrush}"
+                                   HorizontalAlignment="Center"/>
                         <TextBlock x:Name="ResultInfoText"
                                    Visibility="Collapsed"
                                    Margin="0,4,0,0"
@@ -733,90 +525,94 @@
                                    TextWrapping="Wrap"/>
                     </StackPanel>
 
+                    <!-- Сделано ближе к макету: плиткой (wrap) -->
                     <ListBox x:Name="StimuliList"
-                         SelectionChanged="StimuliList_SelectionChanged"
-                         BorderThickness="0"
-                         Background="Transparent"
-                         ScrollViewer.CanContentScroll="True"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         VirtualizingStackPanel.ScrollUnit="Item"
-                         ItemContainerStyle="{StaticResource StimulusListItemStyle}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel>
-                                <!-- Миниатюра -->
-                                <Grid Height="140" Margin="0,0,0,10">
-                                    <Border CornerRadius="10"
-                                            BorderBrush="{StaticResource BorderBrushSoft}"
-                                            BorderThickness="1"
-                                            Background="{Binding PreviewBackground}"/>
+                             SelectionChanged="StimuliList_SelectionChanged"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ScrollViewer.CanContentScroll="False"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ItemContainerStyle="{StaticResource StimulusListItemStyle}">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" ItemWidth="320" ItemHeight="240"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
 
-                                    <Border x:Name="ThumbClip" CornerRadius="10" ClipToBounds="True">
-                                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
-                                    </Border>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <Grid Height="140" Margin="0,0,0,10">
+                                        <Border CornerRadius="10"
+                                                BorderBrush="{StaticResource BorderBrushSoft}"
+                                                BorderThickness="1"
+                                                Background="{Binding PreviewBackground}"/>
 
-                                    <TextBlock x:Name="VideoIcon"
-                                               Text="▶"
-                                               FontSize="36"
+                                        <Border x:Name="ThumbClip" CornerRadius="10" ClipToBounds="True">
+                                            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"/>
+                                        </Border>
+
+                                        <TextBlock x:Name="VideoIcon"
+                                                   Text="▶"
+                                                   FontSize="36"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Visibility="Collapsed"/>
+
+                                        <TextBlock x:Name="MissingIcon"
+                                                   Text="□"
+                                                   FontSize="28"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   Visibility="Collapsed"/>
+                                    </Grid>
+
+                                    <TextBlock Text="{Binding Title}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               TextWrapping="Wrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxHeight="36"/>
+                                    <TextBlock Text="{Binding Subtitle}"
+                                               Margin="0,4,0,0"
                                                Foreground="{StaticResource MutedTextBrush}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Visibility="Collapsed"/>
+                                               FontSize="11"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
 
-                                    <TextBlock x:Name="MissingIcon"
-                                               Text="□"
-                                               FontSize="28"
-                                               Foreground="{StaticResource MutedTextBrush}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               Visibility="Collapsed"/>
-                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Thumbnail}" Value="{x:Null}">
+                                        <Setter TargetName="ThumbClip" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
 
-                                <!-- Название и описание -->
-                                <TextBlock Text="{Binding Title}"
-                                           FontWeight="SemiBold"
-                                           FontSize="14"
-                                           TextWrapping="Wrap"
-                                           TextTrimming="CharacterEllipsis"
-                                           MaxHeight="40"/>
-                                <TextBlock Text="{Binding Subtitle}"
-                                           Margin="0,4,0,0"
-                                           Foreground="{StaticResource MutedTextBrush}"
-                                           FontSize="12"
-                                           TextWrapping="Wrap"/>
-                            </StackPanel>
+                                    <DataTrigger Binding="{Binding IsVideo}" Value="True">
+                                        <Setter TargetName="VideoIcon" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="ThumbClip" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
 
-                            <DataTemplate.Triggers>
-                                <DataTrigger Binding="{Binding Thumbnail}" Value="{x:Null}">
-                                    <Setter TargetName="ThumbClip" Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
+                                    <DataTrigger Binding="{Binding HasFile}" Value="False">
+                                        <Setter TargetName="MissingIcon" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
 
-                                <DataTrigger Binding="{Binding IsVideo}" Value="True">
-                                    <Setter TargetName="VideoIcon" Property="Visibility" Value="Visible"/>
-                                    <Setter TargetName="ThumbClip" Property="Visibility" Value="Collapsed"/>
-                                </DataTrigger>
-
-                                <DataTrigger Binding="{Binding HasFile}" Value="False">
-                                    <Setter TargetName="MissingIcon" Property="Visibility" Value="Visible"/>
-                                </DataTrigger>
-                            </DataTemplate.Triggers>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </DockPanel>
-        </Border>
-
-            <!-- GridSplitter для регулировки высоты -->
-            <GridSplitter Grid.Row="1"
-                          Height="6"
+            <!-- Splitter между STIMULI и RESULTS -->
+            <GridSplitter Grid.Column="1"
+                          Width="6"
                           HorizontalAlignment="Stretch"
-                          VerticalAlignment="Center"
+                          VerticalAlignment="Stretch"
                           Background="Transparent"
-                          Cursor="SizeNS"
+                          Cursor="SizeWE"
                           ResizeBehavior="PreviousAndNext"/>
 
-            <!-- Results DataGrid -->
-            <Border Grid.Row="2"
+            <!-- Results -->
+            <Border Grid.Column="2"
                     CornerRadius="14"
                     BorderThickness="0"
                     BorderBrush="Transparent"
@@ -824,9 +620,11 @@
                     Padding="14">
                 <DockPanel LastChildFill="True">
                     <TextBlock DockPanel.Dock="Top"
-                               Text="Результаты"
-                               FontSize="16"
+                               Text="RESULTS"
+                               FontSize="14"
                                FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}"
+                               HorizontalAlignment="Center"
                                Margin="0,0,0,10"/>
 
                     <DataGrid x:Name="ResultsDataGrid"
@@ -848,13 +646,13 @@
                             <DataGridTemplateColumn Width="32">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                    <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                VerticalAlignment="Center"
-                                                HorizontalAlignment="Center"
-                                                Focusable="False" />
+                                        <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  VerticalAlignment="Center"
+                                                  HorizontalAlignment="Center"
+                                                  Focusable="False" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
+                            </DataGridTemplateColumn>
 
                             <DataGridTemplateColumn Header="Цвет" Width="50">
                                 <DataGridTemplateColumn.CellTemplate>
@@ -872,6 +670,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
+
                             <DataGridTextColumn Header="Дата" Width="110" Binding="{Binding DateString}" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Длит., с" Width="70" Binding="{Binding DurationSec}" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Имя" Width="*" Binding="{Binding Name}" IsReadOnly="True"/>
@@ -880,6 +679,325 @@
                 </DockPanel>
             </Border>
         </Grid>
-
     </Grid>
+
+    <!-- Splitter между левым блоком и правой панелью -->
+    <GridSplitter Grid.Column="1" Grid.Row="1"
+                  Width="6"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Stretch"
+                  Background="Transparent"
+                  Cursor="SizeWE"/>
+
+    <!-- RIGHT PANEL: Timeline над графиками, графики до низа -->
+    <Border Grid.Column="2" Grid.Row="1"
+            CornerRadius="14"
+            BorderThickness="0"
+            BorderBrush="Transparent"
+            Background="White"
+            Padding="14">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="12"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Timeline -->
+            <Border Grid.Row="0"
+                    Background="Transparent"
+                    BorderBrush="#E5E7EB"
+                    BorderThickness="0,0,0,1"
+                    Padding="0,0,0,10">
+                <StackPanel>
+                    <TextBlock Text="Timeline"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,10"/>
+
+                    <!-- video timeline (для видео-стимула) -->
+                    <Grid x:Name="VideoTimelinePanel">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="PlayPauseBtn"
+                                Grid.Column="0"
+                                Style="{StaticResource PillButtonStyle}"
+                                Width="80"
+                                Padding="14,0"
+                                Click="PlayPauseBtn_Click"
+                                IsEnabled="False">
+                            ▶ Play
+                        </Button>
+
+                        <Slider x:Name="TimeSlider"
+                                Grid.Column="2"
+                                Minimum="0"
+                                Maximum="1"
+                                Value="0"
+                                IsEnabled="False"
+                                PreviewMouseDown="TimeSlider_PreviewMouseDown"
+                                PreviewMouseUp="TimeSlider_PreviewMouseUp"/>
+
+                        <TextBlock x:Name="TimeText"
+                                   Grid.Column="4"
+                                   VerticalAlignment="Center"
+                                   Foreground="#88000000"
+                                   FontSize="12"
+                                   Text="00:00 / 00:00"/>
+                    </Grid>
+
+                    <!-- time slice (для картинок/цвета) -->
+                    <Grid x:Name="SliceTimelinePanel"
+                          Margin="0,10,0,0"
+                          Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="12"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="SlicePlayPauseBtn"
+                                    Style="{StaticResource PillButtonStyle}"
+                                    Width="40"
+                                    Padding="0"
+                                    Click="SlicePlayPauseBtn_Click"
+                                    IsEnabled="False">
+                                <TextBlock x:Name="SlicePlayPauseIcon"
+                                           Text="▶"
+                                           FontSize="14"/>
+                            </Button>
+                            <Button x:Name="SliceStopBtn"
+                                    Style="{StaticResource PillButtonStyle}"
+                                    Width="40"
+                                    Padding="0"
+                                    Margin="6,0,0,0"
+                                    Click="SliceStopBtn_Click"
+                                    IsEnabled="False">
+                                <TextBlock Text="■" FontSize="12"/>
+                            </Button>
+                        </StackPanel>
+
+                        <Grid Grid.Column="2">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="От"/>
+                                <controls:TimeRangeSlider x:Name="SliceRange"
+                                                         Grid.Column="2"
+                                                         Minimum="0"
+                                                         Maximum="1"
+                                                         StartValue="0"
+                                                         EndValue="1"
+                                                         RangeChanged="SliceRange_RangeChanged"/>
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#88000000" FontSize="12" Text="Время"/>
+                                <Slider x:Name="SliceTimeSlider"
+                                        Grid.Column="2"
+                                        Minimum="0"
+                                        Maximum="1"
+                                        Value="0"
+                                        IsEnabled="False"
+                                        ValueChanged="SliceTimeSlider_ValueChanged"/>
+                            </Grid>
+                        </Grid>
+
+                        <TextBlock x:Name="SliceText"
+                                   Grid.Row="0"
+                                   Grid.Column="4"
+                                   VerticalAlignment="Center"
+                                   Foreground="#88000000"
+                                   FontSize="12"
+                                   Text="—"/>
+
+                        <TextBlock x:Name="SliceTimeText"
+                                   Grid.Row="1"
+                                   Grid.Column="4"
+                                   VerticalAlignment="Center"
+                                   Foreground="#88000000"
+                                   FontSize="12"
+                                   Text="—"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Graphs -->
+            <ScrollViewer Grid.Row="2"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+
+                    <!-- Основной график / таблица AOI (карточка) -->
+                    <Border CornerRadius="10"
+                            BorderThickness="1"
+                            BorderBrush="#E5E7EB"
+                            Background="#FFFFFF"
+                            Padding="10"
+                            Margin="0,0,0,12">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock DockPanel.Dock="Top"
+                                       Text="Graph"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextBrush}"
+                                       Margin="0,0,0,8"/>
+                            <Grid Height="180">
+                                <controls:MetricChart x:Name="MetricChart"/>
+
+                                <DataGrid x:Name="AoiResultsGrid"
+                                          Visibility="Collapsed"
+                                          AutoGenerateColumns="False"
+                                          CanUserAddRows="False"
+                                          HeadersVisibility="Column"
+                                          GridLinesVisibility="Horizontal"
+                                          Background="White"
+                                          BorderThickness="1"
+                                          BorderBrush="#E5E7EB"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          PreviewKeyDown="AoiResultsGrid_PreviewKeyDown">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="Цвет" Width="40">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Border Width="16" Height="16" CornerRadius="8" Background="{Binding ColorHex}" HorizontalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTextColumn Header="Название" Binding="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
+                                        <DataGridTextColumn Header="Фиксаций (N)" Binding="{Binding FixationCount}" IsReadOnly="True" Width="90"/>
+                                        <DataGridTextColumn Header="Общее время (с)" Binding="{Binding TotalDwellTime, StringFormat=F2}" IsReadOnly="True" Width="110"/>
+
+                                        <DataGridTextColumn Header="До первой (N)" Binding="{Binding FixationsBeforeFirst}" IsReadOnly="True" Width="90"/>
+                                        <DataGridTextColumn Header="До первой фиксации (с)" Binding="{Binding TimeToFirstFixation, StringFormat=F2}" IsReadOnly="True" Width="130"/>
+                                        <DataGridTextColumn Header="Длит. первой (с)" Binding="{Binding FirstFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="110"/>
+
+                                        <DataGridTextColumn Header="Возвраты (N)" Binding="{Binding RevisitCount}" IsReadOnly="True" Width="90"/>
+                                        <DataGridTextColumn Header="Ср. длит. фикс. (с)" Binding="{Binding AvgFixationDuration, StringFormat=F3}" IsReadOnly="True" Width="120"/>
+
+                                        <DataGridTextColumn Header="Саккад (N)" Binding="{Binding SaccadeCount}" IsReadOnly="True" Width="80"/>
+                                        <DataGridTextColumn Header="Ср. ампл. саккад (°)" Binding="{Binding AvgSaccadeAmplitudeDeg, StringFormat=F2}" IsReadOnly="True" Width="130"/>
+
+                                        <DataGridTextColumn Header="Путь (°)" Binding="{Binding ScanpathLengthDeg, StringFormat=F2}" IsReadOnly="True" Width="80"/>
+                                        <DataGridTextColumn Header="Площадь (%)" Binding="{Binding AreaRatio, StringFormat=F1}" IsReadOnly="True" Width="90"/>
+
+                                        <DataGridTemplateColumn Width="40">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="✕"
+                                                            Click="DeleteAoiRow_Click"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Foreground="Red"
+                                                            Cursor="Hand"
+                                                            ToolTip="Удалить область интереса"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- КГР графики (вертикально, карточками) -->
+                    <Border x:Name="KgrChartsPanel"
+                            CornerRadius="10"
+                            BorderThickness="1"
+                            BorderBrush="#E5E7EB"
+                            Background="#FFFFFF"
+                            Padding="10"
+                            Margin="0,0,0,12"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="KGR"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextBrush}"
+                                       Margin="0,0,0,8"/>
+
+                            <Border CornerRadius="8"
+                                    BorderThickness="1"
+                                    BorderBrush="#E5E7EB"
+                                    Background="#F9FAFB"
+                                    Padding="8"
+                                    Margin="0,0,0,10">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Top" Text="SR" FontSize="12" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6"/>
+                                    <controls:MetricChart x:Name="KgrSrChart" Height="120"/>
+                                </DockPanel>
+                            </Border>
+
+                            <Border CornerRadius="8"
+                                    BorderThickness="1"
+                                    BorderBrush="#E5E7EB"
+                                    Background="#F9FAFB"
+                                    Padding="8"
+                                    Margin="0,0,0,10">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Top" Text="SC" FontSize="12" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6"/>
+                                    <controls:MetricChart x:Name="KgrScChart" Height="120"/>
+                                </DockPanel>
+                            </Border>
+
+                            <Border CornerRadius="8"
+                                    BorderThickness="1"
+                                    BorderBrush="#E5E7EB"
+                                    Background="#F9FAFB"
+                                    Padding="8"
+                                    Margin="0,0,0,10">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Top" Text="HR" FontSize="12" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6"/>
+                                    <controls:MetricChart x:Name="KgrHrChart" Height="120"/>
+                                </DockPanel>
+                            </Border>
+
+                            <Border CornerRadius="8"
+                                    BorderThickness="1"
+                                    BorderBrush="#E5E7EB"
+                                    Background="#F9FAFB"
+                                    Padding="8">
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Top" Text="PPG" FontSize="12" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,6"/>
+                                    <controls:MetricChart x:Name="KgrPpgChart" Height="120"/>
+                                </DockPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</Grid>
 </Window>
